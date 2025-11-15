@@ -1,0 +1,6 @@
+/target
+/dhat-ad-hoc.json
+/dhat-heap.json
+/flamegraph.svg
+/perf.data
+/perf.data.old

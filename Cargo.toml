@@ -1,0 +1,24 @@
+[package]
+name = "cosmic-pulsar"
+version = "0.0.1"
+edition = "2024"
+license = "AGPL-3.0"
+description = "A music player for the COSMIC desktop."
+repository = "https://github.com/Cunningcoder5255/cosmic-pulsar"
+
+[dependencies]
+rodio = "0.21.1"
+libcosmic = { git = "https://github.com/pop-os/libcosmic.git", features = [
+  "a11y", "about", "single-instance", "tokio", "winit", "wayland", "wgpu", "xdg-portal"
+]}
+lofty = "0.22.4"
+dhat = "0.3.3"
+rayon = "1.11.0"
+walkdir = "2.5.0"
+
+[profile.release]
+debug=1
+
+[features]
+dhat-heap = []
+dhat-ad-hoc = []
