@@ -46,7 +46,7 @@ impl cosmic::Application for App {
             music_dir = path::PathBuf::from("/");
         }
         let app = Self {
-            page: Box::new(AlbumsPage::new(music_dir).expect("Could not find albums: ")),
+            page: Box::new(AlbumsPage::new(&music_dir).expect("Could not find albums: ")),
             nav_bar,
             core,
         };

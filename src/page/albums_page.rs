@@ -8,7 +8,8 @@ use cosmic::Element;
 use derivative::Derivative;
 use rayon::prelude::*;
 use std::cmp::Ordering;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
+use std::hash::Hash;
 use walkdir::WalkDir;
 // use cosmic::iced::Alignment;
 use cosmic::iced::Length;
@@ -20,51 +21,44 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub enum AlbumsPageMessage {
-    ShowAlbum(Album),
+    ShowAlbum(String),
     BackToAllAlbums,
 }
 
 struct AlbumsLibrary {
-    albums: HashSet<Album>,
-    show_album: Option<Album>,
+    albums: BTreeSet<Album>,
+    show_album: Option<String>,
 }
 impl AlbumsLibrary {
-    // pub fn new(albums: Vec<Album>) -> Self {
-    //     AlbumsLibrary { albums }
-    // }
     pub fn default() -> Self {
         AlbumsLibrary {
             albums: vec![].into_iter().collect(),
             show_album: None,
         }
     }
-    pub fn get_albums(&self) -> &HashSet<Album> {
+    pub fn get_albums(&self) -> &BTreeSet<Album> {
         &self.albums
     }
     pub fn populate(&mut self, path: impl AsRef<Path>) -> Result<(), Box<dyn error::Error>> {
         dhat::ad_hoc_event(1);
         // Go over the entries in the directory
-        for entry in WalkDir::new(path).contents_first(true).follow_links(true) {
+        // Should make parallel at some point but im too retarded for that
+        for entry in WalkDir::new(path)
+            .contents_first(true)
+            .follow_links(true)
+            .into_iter()
+            .filter(|e| {
+                if let Ok(e) = e {
+                    return !e.file_type().is_dir();
+                } else {
+                    return false;
+                };
+            })
+        {
             let entry = entry?; // Return errors with entry
 
-            // Skip directories
-            if entry.path().is_dir() {
-                continue;
-            }
-            // If lofty can't read the file, continue
-            let lofty_path: lofty::file::TaggedFile;
-            if let Ok(ok_lofty_path) = lofty::read_from_path(entry.path()) {
-                lofty_path = ok_lofty_path;
-            } else {
-                continue;
-            };
-            // If file has no tags, skip it
-            let tag = lofty_path.primary_tag();
-            if tag.is_none() {
-                continue;
-            }
-
-            self.add_file(&entry.path());
+            println!("Adding file: {:#?}", entry);
+            self.add_file(entry.path());
         }
         dhat::ad_hoc_event(1);
         Ok(())
@@ -74,18 +68,18 @@ impl AlbumsLibrary {
         let Ok(song) = Song::from_path(&file) else {
             return;
         };
-        let Some(album_title) = song.album_title.clone() else {
+        let Some(album_title) = song.album_title.as_ref() else {
             return;
         };
-        let mut album = Album::new(
-            album_title,
-            song.picture.clone(),
-            vec![song.clone()].into_iter().collect(),
-        );
+        // Do not use `song` yet because it would force us to clone later and is not relevant for comparisons
+        let mut album = Album::new(album_title, vec![].into_iter().collect());
         // If the album is already in the set, we add the given song to it.
         // Album Eq and Hash is not effected by the list of songs, so we can find and compare albums that have more songs than the file we've been given
-        if !self.albums.insert(album.clone()) {
+        if self.albums.contains(&album) {
             album = self.albums.take(&album).unwrap();
+            album.add_song(song);
+            self.albums.insert(album);
+        } else {
             album.add_song(song);
             self.albums.insert(album);
         }
@@ -197,27 +191,51 @@ impl Song {
     }
 }
 
-#[derive(Debug, Clone, Derivative, Eq)]
-#[derivative(Hash, PartialEq)]
+#[derive(Debug, Clone, Derivative)]
+#[derivative(Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Album {
     pub title: String,
-    pub picture: image::Handle,
-    #[derivative(Hash = "ignore", PartialEq = "ignore")]
+    #[derivative(
+        Hash = "ignore",
+        PartialEq = "ignore",
+        PartialOrd = "ignore",
+        Ord = "ignore"
+    )]
+    pub placeholder_image: image::Handle,
+    #[derivative(Hash = "ignore", PartialEq = "ignore", Ord = "ignore")]
     pub songs: BTreeSet<Song>,
 }
 impl Album {
-    pub fn new(title: String, picture: impl Into<image::Handle>, songs: BTreeSet<Song>) -> Self {
+    pub fn new(title: &str, songs: BTreeSet<Song>) -> Album {
+        let placeholder_image = image::Handle::from_bytes(
+            include_bytes!("../../resources/images/albumplaceholder.png").as_slice(),
+        );
         Album {
-            title,
-            picture: picture.into(),
+            title: title.to_string(),
+            placeholder_image,
             songs,
         }
+    }
+    pub fn from_song(song: Song) -> Album {
+        let title = song.title.clone();
+
+        Self::new(&title, vec![song].into_iter().collect())
     }
     pub fn add_song(&mut self, song: Song) {
         self.songs.insert(song);
     }
     pub fn get_songs(&self) -> &BTreeSet<Song> {
         &self.songs
+    }
+    /// Gets the album picture from the first song in the album
+    pub fn get_picture(&self) -> &image::Handle {
+        let picture: &image::Handle;
+        if let Some(song) = &self.songs.first() {
+            picture = &song.picture;
+        } else {
+            picture = &self.placeholder_image;
+        }
+        picture
     }
 }
 
@@ -226,9 +244,9 @@ pub struct AlbumsPage {
 }
 
 impl AlbumsPage {
-    pub fn new(music_dir: PathBuf) -> Result<AlbumsPage, Box<dyn error::Error>> {
+    pub fn new(music_dir: &Path) -> Result<AlbumsPage, Box<dyn error::Error>> {
         let mut albums = AlbumsLibrary::default();
-        albums.populate(music_dir.clone())?;
+        albums.populate(music_dir)?;
 
         Ok(AlbumsPage { albums })
     }
@@ -238,8 +256,8 @@ impl Page for AlbumsPage {
     fn update(&mut self, message: Message) -> Option<Box<dyn Page>> {
         if let Message::AlbumsPage(album_message) = message {
             match album_message {
-                AlbumsPageMessage::ShowAlbum(album) => {
-                    self.albums.show_album = Some(album);
+                AlbumsPageMessage::ShowAlbum(title) => {
+                    self.albums.show_album = Some(title);
                 }
                 AlbumsPageMessage::BackToAllAlbums => {
                     self.albums.show_album = None;
@@ -252,12 +270,19 @@ impl Page for AlbumsPage {
         if self.albums.show_album.is_none() {
             return elements_from_albums(&self.albums);
         }
-        elements_from_songs(self.albums.show_album.as_ref().unwrap())
+        elements_from_songs(self.albums.show_album.as_ref().unwrap(), &self.albums)
     }
 }
 
-fn elements_from_songs(album: &Album) -> Element<'static, Message> {
+fn elements_from_songs(album: &str, library: &AlbumsLibrary) -> Element<'static, Message> {
     let mut songs_list: Vec<Element<Message>> = vec![];
+    let Some(album) = library
+        .get_albums()
+        .par_iter()
+        .find_any(|library_album| library_album.title == album)
+    else {
+        return text("No album.").into();
+    };
 
     for song in album.get_songs() {}
     button::text("Back")
@@ -271,12 +296,12 @@ fn elements_from_albums(albums: &AlbumsLibrary) -> Element<'static, Message> {
     let mut albums_grid: Vec<Element<Message>> = vec![];
     for album in albums.get_albums() {
         static CARD_WIDTH: u16 = 150;
-        let picture: Element<Message> = image(album.picture.clone()).width(CARD_WIDTH).into();
+        let picture: Element<Message> = image(album.get_picture().clone()).width(CARD_WIDTH).into();
         let label = text(album.title.clone()).width(CARD_WIDTH);
         let album_card: Element<Message> =
             button::custom(column::with_capacity(2).push(picture).push(label))
                 .on_press(Message::AlbumsPage(AlbumsPageMessage::ShowAlbum(
-                    album.clone(),
+                    album.title.clone(),
                 )))
                 .height(200)
                 .padding(space)
