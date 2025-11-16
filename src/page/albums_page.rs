@@ -10,6 +10,7 @@ use rayon::prelude::*;
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::hash::Hash;
+use std::sync::{Arc, Mutex};
 use walkdir::WalkDir;
 // use cosmic::iced::Alignment;
 use cosmic::iced::Length;
@@ -40,7 +41,8 @@ impl AlbumsLibrary {
         &self.albums
     }
     pub fn populate(&mut self, path: impl AsRef<Path>) -> Result<(), Box<dyn error::Error>> {
-        dhat::ad_hoc_event(1);
+        let mut paths: Vec<PathBuf> = vec![];
+
         // Go over the entries in the directory
         // Should make parallel at some point but im too retarded for that
         for entry in WalkDir::new(path)
@@ -57,10 +59,15 @@ impl AlbumsLibrary {
         {
             let entry = entry?; // Return errors with entry
 
-            println!("Adding file: {:#?}", entry);
-            self.add_file(entry.path());
+            paths.push(entry.into_path());
         }
-        dhat::ad_hoc_event(1);
+
+        // Does this even do anything? Mutex might lock it so that you can only perform one operation at a time anyways
+        let self_ref = Arc::new(Mutex::new(self));
+        paths.par_iter().for_each(|path| {
+            println!("Adding file: {:#?}", path);
+            self_ref.lock().unwrap().add_file(&path)
+        });
         Ok(())
     }
     pub fn add_file(&mut self, file: &Path) {
