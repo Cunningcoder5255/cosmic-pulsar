@@ -5,20 +5,20 @@ use crate::app::Message;
 use crate::page::Page;
 use cosmic;
 use cosmic::Element;
+use cosmic::iced::Alignment;
+use cosmic::iced::Length;
+use cosmic::widget::*;
 use derivative::Derivative;
+use lofty::file::TaggedFileExt;
+use lofty::tag::Accessor;
 use rayon::prelude::*;
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
+use std::error;
 use std::hash::Hash;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use walkdir::WalkDir;
-// use cosmic::iced::Alignment;
-use cosmic::iced::Length;
-use cosmic::widget::*;
-use lofty::file::TaggedFileExt;
-use lofty::tag::Accessor;
-use std::error;
-use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub enum AlbumsPageMessage {
@@ -282,19 +282,50 @@ impl Page for AlbumsPage {
 }
 
 fn elements_from_songs(album: &str, library: &AlbumsLibrary) -> Element<'static, Message> {
+    println!("Displaying...");
+    let space = cosmic::theme::spacing().space_s;
     let mut songs_list: Vec<Element<Message>> = vec![];
+    songs_list.push(
+        button::text("Back")
+            .on_press(Message::AlbumsPage(AlbumsPageMessage::BackToAllAlbums))
+            .into(),
+    );
     let Some(album) = library
         .get_albums()
         .par_iter()
         .find_any(|library_album| library_album.title == album)
     else {
-        return text("No album.").into();
+        return text("Could not find album").into();
     };
 
-    for song in album.get_songs() {}
-    button::text("Back")
-        .on_press(Message::AlbumsPage(AlbumsPageMessage::BackToAllAlbums))
-        .into()
+    for song in album.get_songs() {
+        println!("Displaying {:#?}", song);
+        const HEIGHT: u16 = 100;
+        let picture = image(song.picture.clone());
+        let name = text(song.title.clone())
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_y(Alignment::Center);
+        let index = text(song.index.expect("Song does not have an index").to_string())
+            .align_y(Alignment::Center)
+            .height(Length::Fill);
+        let container = container(
+            row::with_capacity::<Message>(3)
+                .push(picture)
+                .push(name)
+                .push(index)
+                .spacing(space),
+        )
+        .height(HEIGHT);
+        songs_list.push(container.into());
+    }
+    println!("Done");
+    scrollable(
+        column::with_children(songs_list)
+            .spacing(space)
+            .padding(space),
+    )
+    .into()
 }
 
 fn elements_from_albums(albums: &AlbumsLibrary) -> Element<'static, Message> {
