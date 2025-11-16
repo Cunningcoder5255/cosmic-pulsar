@@ -5,7 +5,10 @@ use crate::app::Message;
 use crate::page::Page;
 use cosmic;
 use cosmic::Element;
+use derivative::Derivative;
 use rayon::prelude::*;
+use std::cmp::Ordering;
+use std::collections::{BTreeSet, HashSet};
 use walkdir::WalkDir;
 // use cosmic::iced::Alignment;
 use cosmic::iced::Length;
@@ -13,32 +16,38 @@ use cosmic::widget::*;
 use lofty::file::TaggedFileExt;
 use lofty::tag::Accessor;
 use std::error;
-use std::path::{self, PathBuf};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub enum AlbumsPageMessage {
     ShowAlbum(Album),
+    BackToAllAlbums,
 }
 
 struct AlbumsLibrary {
-    albums: Vec<Album>,
+    albums: HashSet<Album>,
+    show_album: Option<Album>,
 }
 impl AlbumsLibrary {
     // pub fn new(albums: Vec<Album>) -> Self {
     //     AlbumsLibrary { albums }
     // }
     pub fn default() -> Self {
-        AlbumsLibrary { albums: vec![] }
+        AlbumsLibrary {
+            albums: vec![].into_iter().collect(),
+            show_album: None,
+        }
     }
-    pub fn get_albums(&self) -> &Vec<Album> {
+    pub fn get_albums(&self) -> &HashSet<Album> {
         &self.albums
     }
-    pub fn populate(&mut self, path: impl AsRef<path::Path>) -> Result<(), Box<dyn error::Error>> {
+    pub fn populate(&mut self, path: impl AsRef<Path>) -> Result<(), Box<dyn error::Error>> {
         dhat::ad_hoc_event(1);
         // Go over the entries in the directory
         for entry in WalkDir::new(path).contents_first(true).follow_links(true) {
             let entry = entry?; // Return errors with entry
-            // Push files to the dir
+
+            // Skip directories
             if entry.path().is_dir() {
                 continue;
             }
@@ -55,63 +64,160 @@ impl AlbumsLibrary {
                 continue;
             }
 
-            let album_title = tag.unwrap().album().unwrap_or_default().to_string();
-            let picture = tag.unwrap().pictures().to_vec().pop();
-            let picture_handle: image::Handle;
-            if let Some(picture) = picture {
-                picture_handle = image::Handle::from_bytes(picture.into_data());
-            } else {
-                picture_handle = image::Handle::from_bytes(
-                    include_bytes!("../../resources/images/albumplaceholder.png").as_slice(),
-                );
-            }
-
-            self.add_album(&album_title, picture_handle, entry.path().to_path_buf());
+            self.add_file(&entry.path());
         }
         dhat::ad_hoc_event(1);
         Ok(())
     }
-    pub fn add_album(&mut self, title: &str, picture: impl Into<image::Handle>, file: PathBuf) {
-        // If album already exists, append the file to it
-        let existing_album = self
-            .albums
-            .par_iter_mut()
-            .find_any(|album| album.title == title);
-        if existing_album.is_some() {
-            existing_album.unwrap().add_file(file);
+    pub fn add_file(&mut self, file: &Path) {
+        // Create a song from the given file path
+        let Ok(song) = Song::from_path(&file) else {
             return;
+        };
+        let Some(album_title) = song.album_title.clone() else {
+            return;
+        };
+        let mut album = Album::new(
+            album_title,
+            song.picture.clone(),
+            vec![song.clone()].into_iter().collect(),
+        );
+        // If the album is already in the set, we add the given song to it.
+        // Album Eq and Hash is not effected by the list of songs, so we can find and compare albums that have more songs than the file we've been given
+        if !self.albums.insert(album.clone()) {
+            album = self.albums.take(&album).unwrap();
+            album.add_song(song);
+            self.albums.insert(album);
         }
-        // If not, add it to the list of albums
-        self.albums
-            .push(Album::new(title.to_string(), picture, vec![file]));
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct Song {
+    pub title: String,
+    pub artist: Option<String>,
+    pub album_title: Option<String>,
+    pub genre: Option<String>,
+    pub year: Option<u32>,
+    pub picture: image::Handle,
+    pub path: PathBuf,
+    pub index: Option<u32>,
+}
+impl Ord for Song {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.index > other.index {
+            return Ordering::Greater;
+        } else if self.index == other.index {
+            return Ordering::Equal;
+        } else {
+            return Ordering::Less;
+        }
+    }
+}
+impl PartialOrd for Song {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.index > other.index {
+            return Some(Ordering::Greater);
+        } else if self.index == other.index {
+            return Some(Ordering::Equal);
+        } else {
+            return Some(Ordering::Less);
+        }
+    }
+}
+impl Song {
+    fn new(
+        title: String,
+        artist: Option<String>,
+        album_title: Option<String>,
+        genre: Option<String>,
+        year: Option<u32>,
+        picture: image::Handle,
+        path: &Path,
+        index: Option<u32>,
+    ) -> Self {
+        Self {
+            title,
+            artist,
+            genre,
+            album_title,
+            year,
+            picture,
+            path: path.to_path_buf(),
+            index,
+        }
+    }
+    fn from_path(path: &Path) -> Result<Self, lofty::error::LoftyError> {
+        let lofty_file = lofty::read_from_path(path)?;
+        let file_tag = lofty_file
+            .primary_tag()
+            .ok_or(lofty::error::LoftyError::new(
+                lofty::error::ErrorKind::FakeTag,
+            ))?;
+        // Most unreadable line of code I've ever written
+        // Attempts to parse file name, if it can't returns lofty error TextDecode
+        let file_name = path
+            .file_name()
+            .ok_or_else(|| {
+                lofty::error::LoftyError::new(lofty::error::ErrorKind::TextDecode(
+                    "Could not decode file name.",
+                ))
+            })?
+            .to_str()
+            .ok_or(lofty::error::LoftyError::new(
+                lofty::error::ErrorKind::TextDecode("Could not convert file name to rust string."),
+            ))?;
+        // Set title either to the title tag or the file name
+        let title = file_tag.title().unwrap_or_else(|| file_name.into());
+        let album_title = file_tag.album().map(|title| title.to_string());
+        let picture = file_tag.pictures().to_vec().pop();
+        let picture_handle: image::Handle;
+        if let Some(picture) = picture {
+            picture_handle = image::Handle::from_bytes(picture.into_data());
+        } else {
+            picture_handle = image::Handle::from_bytes(
+                include_bytes!("../../resources/images/albumplaceholder.png").as_slice(),
+            );
+        }
+        let index = file_tag.track();
+        let artist = file_tag.artist().map(|artist| artist.to_string());
+        let genre = file_tag.genre().map(|genre| genre.to_string());
+        let year = file_tag.year();
+
+        Ok(Self::new(
+            title.to_string(),
+            artist,
+            album_title,
+            genre,
+            year,
+            picture_handle,
+            path,
+            index,
+        ))
+    }
+}
+
+#[derive(Debug, Clone, Derivative, Eq)]
+#[derivative(Hash, PartialEq)]
 pub struct Album {
     pub title: String,
     pub picture: image::Handle,
-    pub files: Vec<PathBuf>,
+    #[derivative(Hash = "ignore", PartialEq = "ignore")]
+    pub songs: BTreeSet<Song>,
 }
 impl Album {
-    pub fn new(title: String, picture: impl Into<image::Handle>, files: Vec<PathBuf>) -> Self {
+    pub fn new(title: String, picture: impl Into<image::Handle>, songs: BTreeSet<Song>) -> Self {
         Album {
             title,
             picture: picture.into(),
-            files,
+            songs,
         }
     }
-    pub fn add_file(&mut self, new_file: PathBuf) {
-        // If file is already in album, do not add it
-        if self
-            .files
-            .par_iter()
-            .find_any(|file| **file == new_file)
-            .is_some()
-        {
-            return;
-        }
-        self.files.push(new_file);
+    pub fn add_song(&mut self, song: Song) {
+        self.songs.insert(song);
+    }
+    pub fn get_songs(&self) -> &BTreeSet<Song> {
+        &self.songs
     }
 }
 
@@ -120,7 +226,7 @@ pub struct AlbumsPage {
 }
 
 impl AlbumsPage {
-    pub fn new(music_dir: path::PathBuf) -> Result<AlbumsPage, Box<dyn error::Error>> {
+    pub fn new(music_dir: PathBuf) -> Result<AlbumsPage, Box<dyn error::Error>> {
         let mut albums = AlbumsLibrary::default();
         albums.populate(music_dir.clone())?;
 
@@ -133,15 +239,30 @@ impl Page for AlbumsPage {
         if let Message::AlbumsPage(album_message) = message {
             match album_message {
                 AlbumsPageMessage::ShowAlbum(album) => {
-                    println!("{}", album.title)
+                    self.albums.show_album = Some(album);
+                }
+                AlbumsPageMessage::BackToAllAlbums => {
+                    self.albums.show_album = None;
                 }
             }
         }
         None
     }
     fn view(&self) -> cosmic::Element<'_, Message> {
-        elements_from_albums(&self.albums)
+        if self.albums.show_album.is_none() {
+            return elements_from_albums(&self.albums);
+        }
+        elements_from_songs(self.albums.show_album.as_ref().unwrap())
     }
+}
+
+fn elements_from_songs(album: &Album) -> Element<'static, Message> {
+    let mut songs_list: Vec<Element<Message>> = vec![];
+
+    for song in album.get_songs() {}
+    button::text("Back")
+        .on_press(Message::AlbumsPage(AlbumsPageMessage::BackToAllAlbums))
+        .into()
 }
 
 fn elements_from_albums(albums: &AlbumsLibrary) -> Element<'static, Message> {
@@ -149,14 +270,6 @@ fn elements_from_albums(albums: &AlbumsLibrary) -> Element<'static, Message> {
     // let space_s = cosmic::theme::spacing().space_xxxs;
     let mut albums_grid: Vec<Element<Message>> = vec![];
     for album in albums.get_albums() {
-        // let picture_handle: image::Handle;
-        // if album.1.is_empty() {
-        //     picture_handle = image::Handle::from_bytes(
-        //         include_bytes!("../../resources/images/albumplaceholder.png").as_slice(),
-        //     );
-        // } else {
-        //     picture_handle = image::Handle::from_bytes(album.1.first().unwrap().data().to_owned())
-        // }
         static CARD_WIDTH: u16 = 150;
         let picture: Element<Message> = image(album.picture.clone()).width(CARD_WIDTH).into();
         let label = text(album.title.clone()).width(CARD_WIDTH);
@@ -170,10 +283,6 @@ fn elements_from_albums(albums: &AlbumsLibrary) -> Element<'static, Message> {
                 .into();
         albums_grid.push(album_card);
     }
-
-    // for _i in 0..albums.len() / 5 {
-    //     albums_grid = albums_grid.insert_row();
-    // }
 
     Element::from(scrollable(
         flex_row(albums_grid)

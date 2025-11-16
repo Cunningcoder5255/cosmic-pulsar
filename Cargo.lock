@@ -1090,6 +1090,7 @@ dependencies = [
 name = "cosmic-pulsar"
 version = "0.0.1"
 dependencies = [
+ "derivative",
  "dhat",
  "libcosmic",
  "lofty",

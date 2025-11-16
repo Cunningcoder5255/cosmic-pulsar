@@ -15,9 +15,11 @@ lofty = "0.22.4"
 dhat = "0.3.3"
 rayon = "1.11.0"
 walkdir = "2.5.0"
+derivative = "2.2.0"
 
 [profile.release]
-debug=1
+debug=true
+strip=false
 
 [features]
 dhat-heap = []
