@@ -45,12 +45,13 @@ impl cosmic::Application for App {
         } else {
             music_dir = path::PathBuf::from("/");
         }
+        let (albums_page, task) = AlbumsPage::new(&music_dir).expect("Could not find albums: ");
         let app = Self {
-            page: Box::new(AlbumsPage::new(&music_dir).expect("Could not find albums: ")),
+            page: Box::new(albums_page),
             nav_bar,
             core,
         };
-        (app, cosmic::Task::none())
+        (app, task)
     }
     fn core(&self) -> &cosmic::Core {
         &self.core
@@ -65,8 +66,9 @@ impl cosmic::Application for App {
     // Update the state of the application with messages from view
     fn update(&mut self, message: Message) -> cosmic::Task<cosmic::Action<Message>> {
         let page = self.page.update(message);
-        if let Some(p) = page {
+        if let (task, Some(p)) = page {
             self.page = p;
+            return task;
         }
         cosmic::Task::none()
     }

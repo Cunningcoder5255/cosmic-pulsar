@@ -9,6 +9,7 @@ use cosmic::iced::Alignment;
 use cosmic::iced::Length;
 use cosmic::widget::*;
 use derivative::Derivative;
+use lofty::error::LoftyError;
 use lofty::file::TaggedFileExt;
 use lofty::tag::Accessor;
 use rayon::prelude::*;
@@ -17,16 +18,19 @@ use std::collections::BTreeSet;
 use std::error;
 use std::hash::Hash;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+// use std::sync::{Arc, Mutex};
 use walkdir::WalkDir;
 
 #[derive(Debug, Clone)]
 pub enum AlbumsPageMessage {
     ShowAlbum(String),
+    Populate(Album),
     BackToAllAlbums,
+    PopulateAlbumsLibrary,
 }
 
-struct AlbumsLibrary {
+#[derive(Debug, Clone)]
+pub struct AlbumsLibrary {
     albums: BTreeSet<Album>,
     show_album: Option<String>,
 }
@@ -40,8 +44,9 @@ impl AlbumsLibrary {
     pub fn get_albums(&self) -> &BTreeSet<Album> {
         &self.albums
     }
-    pub fn populate(&mut self, path: impl AsRef<Path>) -> Result<(), Box<dyn error::Error>> {
+    pub fn populate(path: impl AsRef<Path>) -> Vec<cosmic::Task<Album>> {
         let mut paths: Vec<PathBuf> = vec![];
+        let albums_library = AlbumsLibrary::default();
 
         // Go over the entries in the directory
         // Should make parallel at some point but im too retarded for that
@@ -57,22 +62,33 @@ impl AlbumsLibrary {
                 };
             })
         {
-            let entry = entry?; // Return errors with entry
+            let Ok(entry) = entry else { continue }; // Skip bad paths
 
             paths.push(entry.into_path());
         }
 
+        let mut tasks: Vec<cosmic::Task<Album>> = vec![];
+
+        for path in paths {
+            tasks.push(cosmic::Task::perform(
+                Album::from_song(Song::from_path(path).unwrap()),
+                |album| album,
+            ))
+        }
+
+        tasks
+
         // Does this even do anything? Mutex might lock it so that you can only perform one operation at a time anyways
-        let self_ref = Arc::new(Mutex::new(self));
-        paths.par_iter().for_each(|path| {
-            println!("Adding file: {:#?}", path);
-            self_ref.lock().unwrap().add_file(&path)
-        });
-        Ok(())
+        // let self_ref = Arc::new(Mutex::new(albums_library));
+        // paths.par_iter().for_each(|path| {
+        // println!("Adding file: {:#?}", path);
+        // self_ref.lock().unwrap().add_file(&path)
+        // });
+        // Arc::try_unwrap(self_ref).unwrap().into_inner().unwrap()
     }
-    pub fn add_file(&mut self, file: &Path) {
+    pub async fn add_file(&mut self, file: &Path) {
         // Create a song from the given file path
-        let Ok(song) = Song::from_path(&file) else {
+        let Ok(song) = Song::from_path(file.into()) else {
             return;
         };
         let Some(album_title) = song.album_title.as_ref() else {
@@ -90,6 +106,9 @@ impl AlbumsLibrary {
             album.add_song(song);
             self.albums.insert(album);
         }
+    }
+    pub fn add_album(&mut self, album: Album) {
+        self.albums.insert(album);
     }
 }
 
@@ -148,8 +167,8 @@ impl Song {
             index,
         }
     }
-    fn from_path(path: &Path) -> Result<Self, lofty::error::LoftyError> {
-        let lofty_file = lofty::read_from_path(path)?;
+    fn from_path(path: PathBuf) -> Result<Self, lofty::error::LoftyError> {
+        let lofty_file = lofty::read_from_path(path.clone())?;
         let file_tag = lofty_file
             .primary_tag()
             .ok_or(lofty::error::LoftyError::new(
@@ -192,7 +211,7 @@ impl Song {
             genre,
             year,
             picture_handle,
-            path,
+            &path,
             index,
         ))
     }
@@ -223,7 +242,7 @@ impl Album {
             songs,
         }
     }
-    pub fn from_song(song: Song) -> Album {
+    pub async fn from_song(song: Song) -> Album {
         let title = song.title.clone();
 
         Self::new(&title, vec![song].into_iter().collect())
@@ -247,37 +266,55 @@ impl Album {
 }
 
 pub struct AlbumsPage {
-    albums: AlbumsLibrary,
+    albums_library: AlbumsLibrary,
 }
 
 impl AlbumsPage {
-    pub fn new(music_dir: &Path) -> Result<AlbumsPage, Box<dyn error::Error>> {
-        let mut albums = AlbumsLibrary::default();
-        albums.populate(music_dir)?;
+    pub fn new(
+        music_dir: &Path,
+    ) -> Result<(AlbumsPage, cosmic::Task<cosmic::Action<Message>>), Box<dyn error::Error>> {
+        let albums = AlbumsLibrary::default();
+        let populate_task = cosmic::Task::batch(AlbumsLibrary::populate(music_dir))
+            .map(|o| cosmic::Action::App(Message::AlbumsPage(AlbumsPageMessage::Populate(o))));
 
-        Ok(AlbumsPage { albums })
+        Ok((
+            AlbumsPage {
+                albums_library: albums,
+            },
+            populate_task,
+        ))
     }
 }
 
 impl Page for AlbumsPage {
-    fn update(&mut self, message: Message) -> Option<Box<dyn Page>> {
+    fn update(
+        &mut self,
+        message: Message,
+    ) -> (cosmic::Task<cosmic::Action<Message>>, Option<Box<dyn Page>>) {
         if let Message::AlbumsPage(album_message) = message {
             match album_message {
                 AlbumsPageMessage::ShowAlbum(title) => {
-                    self.albums.show_album = Some(title);
+                    self.albums_library.show_album = Some(title);
                 }
                 AlbumsPageMessage::BackToAllAlbums => {
-                    self.albums.show_album = None;
+                    self.albums_library.show_album = None;
+                }
+                AlbumsPageMessage::PopulateAlbumsLibrary => {}
+                AlbumsPageMessage::Populate(album) => {
+                    self.albums_library.add_album(album);
                 }
             }
         }
-        None
+        (cosmic::Task::none(), None)
     }
     fn view(&self) -> cosmic::Element<'_, Message> {
-        if self.albums.show_album.is_none() {
-            return elements_from_albums(&self.albums);
+        if self.albums_library.show_album.is_none() {
+            return elements_from_albums(&self.albums_library);
         }
-        elements_from_songs(self.albums.show_album.as_ref().unwrap(), &self.albums)
+        elements_from_songs(
+            self.albums_library.show_album.as_ref().unwrap(),
+            &self.albums_library,
+        )
     }
 }
 

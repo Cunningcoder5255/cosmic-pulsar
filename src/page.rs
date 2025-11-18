@@ -10,6 +10,9 @@ pub enum Pages {
     FilesPage(files_page::FilesPage),
 }
 pub trait Page {
-    fn update(&mut self, message: Message) -> Option<Box<dyn Page>>;
+    fn update(
+        &mut self,
+        message: Message,
+    ) -> (cosmic::Task<cosmic::Action<Message>>, Option<Box<dyn Page>>);
     fn view(&self) -> cosmic::Element<'_, Message>;
 }
