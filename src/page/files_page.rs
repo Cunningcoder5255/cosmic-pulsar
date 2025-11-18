@@ -12,7 +12,10 @@ impl Page for FilesPage {
     fn view(&self) -> cosmic::Element<'_, Message> {
         todo!();
     }
-    fn update(&mut self, message: Message) -> Option<Box<dyn Page>> {
+    fn update(
+        &mut self,
+        message: Message,
+    ) -> (cosmic::Task<cosmic::Action<Message>>, Option<Box<dyn Page>>) {
         todo!();
     }
 }

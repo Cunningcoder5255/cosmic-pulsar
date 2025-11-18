@@ -18,9 +18,16 @@ walkdir = "2.5.0"
 derivative = "2.2.0"
 
 [profile.release]
+opt-level = 1
 debug=true
 strip=false
 
 [features]
 dhat-heap = []
 dhat-ad-hoc = []
+
+[build]
+rustflags = ["-C", "force-frame-pointers=yes"]
+# disable debug symbols for all packages except this one
+# [profile.release.package."*"]
+# debug = false

@@ -9,6 +9,7 @@ use cosmic::iced::Alignment;
 use cosmic::iced::Length;
 use cosmic::widget::*;
 use derivative::Derivative;
+use lofty::error::LoftyError;
 use lofty::file::TaggedFileExt;
 use lofty::tag::Accessor;
 use rayon::prelude::*;
@@ -17,16 +18,19 @@ use std::collections::BTreeSet;
 use std::error;
 use std::hash::Hash;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+// use std::sync::{Arc, Mutex};
 use walkdir::WalkDir;
 
 #[derive(Debug, Clone)]
 pub enum AlbumsPageMessage {
     ShowAlbum(String),
+    Populate(Option<Album>),
     BackToAllAlbums,
+    PopulateAlbumsLibrary,
 }
 
-struct AlbumsLibrary {
+#[derive(Debug, Clone)]
+pub struct AlbumsLibrary {
     albums: BTreeSet<Album>,
     show_album: Option<String>,
 }
@@ -40,7 +44,8 @@ impl AlbumsLibrary {
     pub fn get_albums(&self) -> &BTreeSet<Album> {
         &self.albums
     }
-    pub fn populate(&mut self, path: impl AsRef<Path>) -> Result<(), Box<dyn error::Error>> {
+    pub fn populate(path: PathBuf) -> Vec<cosmic::Task<Option<Album>>> {
+        println!("{:#?}", path);
         let mut paths: Vec<PathBuf> = vec![];
 
         // Go over the entries in the directory
@@ -57,22 +62,32 @@ impl AlbumsLibrary {
                 };
             })
         {
-            let entry = entry?; // Return errors with entry
+            println!("Inspecting directory/file: {:#?}", entry);
+            let Ok(entry) = entry else { continue }; // Skip bad paths
 
             paths.push(entry.into_path());
         }
 
-        // Does this even do anything? Mutex might lock it so that you can only perform one operation at a time anyways
-        let self_ref = Arc::new(Mutex::new(self));
-        paths.par_iter().for_each(|path| {
-            println!("Adding file: {:#?}", path);
-            self_ref.lock().unwrap().add_file(&path)
-        });
-        Ok(())
+        let mut tasks: Vec<cosmic::Task<Option<Album>>> = vec![];
+
+        for path in paths {
+            // Skip invalid songs
+            // let Ok(song) = Song::from_path(path) else {
+            //     continue;
+            // };
+            println!("Pushing task for: {:#?}", path);
+            tasks.push(
+                cosmic::Task::perform(Song::from_path(path), |song| song)
+                    .and_then(|song| cosmic::Task::perform(Album::from_song(song), |album| album)),
+            );
+            // tasks.push(cosmic::Task::perform(Album::from_song(song), |album| album))
+        }
+
+        tasks
     }
-    pub fn add_file(&mut self, file: &Path) {
+    pub async fn add_file(&mut self, file: &Path) {
         // Create a song from the given file path
-        let Ok(song) = Song::from_path(&file) else {
+        let Ok(song) = Song::from_path(file.into()).await else {
             return;
         };
         let Some(album_title) = song.album_title.as_ref() else {
@@ -88,6 +103,15 @@ impl AlbumsLibrary {
             self.albums.insert(album);
         } else {
             album.add_song(song);
+            self.albums.insert(album);
+        }
+    }
+    pub fn add_album(&mut self, album: Album) {
+        if self.albums.contains(&album) {
+            let mut old_album = self.albums.take(&album).unwrap();
+            old_album = old_album.union(album);
+            self.albums.insert(old_album);
+        } else {
             self.albums.insert(album);
         }
     }
@@ -148,8 +172,9 @@ impl Song {
             index,
         }
     }
-    fn from_path(path: &Path) -> Result<Self, lofty::error::LoftyError> {
-        let lofty_file = lofty::read_from_path(path)?;
+    async fn from_path(path: PathBuf) -> Result<Self, lofty::error::LoftyError> {
+        println!("Creating song from path: {:#?}", path);
+        let lofty_file = lofty::read_from_path(path.clone())?;
         let file_tag = lofty_file
             .primary_tag()
             .ok_or(lofty::error::LoftyError::new(
@@ -184,6 +209,7 @@ impl Song {
         let artist = file_tag.artist().map(|artist| artist.to_string());
         let genre = file_tag.genre().map(|genre| genre.to_string());
         let year = file_tag.year();
+        println!("Done creating song: {:#?}", path);
 
         Ok(Self::new(
             title.to_string(),
@@ -192,7 +218,7 @@ impl Song {
             genre,
             year,
             picture_handle,
-            path,
+            &path,
             index,
         ))
     }
@@ -223,10 +249,16 @@ impl Album {
             songs,
         }
     }
-    pub fn from_song(song: Song) -> Album {
-        let title = song.title.clone();
-
-        Self::new(&title, vec![song].into_iter().collect())
+    pub fn union(mut self, mut other_album: Album) -> Self {
+        self.songs.append(&mut other_album.songs);
+        self
+    }
+    pub async fn from_song(song: Song) -> Option<Album> {
+        println!("Creating album from song: {:#?}", song);
+        let Some(title) = song.album_title.clone() else {
+            return None;
+        };
+        Some(Self::new(&title, vec![song].into_iter().collect()))
     }
     pub fn add_song(&mut self, song: Song) {
         self.songs.insert(song);
@@ -247,37 +279,55 @@ impl Album {
 }
 
 pub struct AlbumsPage {
-    albums: AlbumsLibrary,
+    albums_library: AlbumsLibrary,
 }
 
 impl AlbumsPage {
-    pub fn new(music_dir: &Path) -> Result<AlbumsPage, Box<dyn error::Error>> {
-        let mut albums = AlbumsLibrary::default();
-        albums.populate(music_dir)?;
+    pub fn new(
+        music_dir: &Path,
+    ) -> Result<(AlbumsPage, cosmic::Task<cosmic::Action<Message>>), Box<dyn error::Error>> {
+        let albums = AlbumsLibrary::default();
+        let populate_task = cosmic::Task::batch(AlbumsLibrary::populate(music_dir.into()))
+            .map(|o| cosmic::Action::App(Message::AlbumsPage(AlbumsPageMessage::Populate(o))));
 
-        Ok(AlbumsPage { albums })
+        Ok((
+            AlbumsPage {
+                albums_library: albums,
+            },
+            populate_task,
+        ))
     }
 }
 
 impl Page for AlbumsPage {
-    fn update(&mut self, message: Message) -> Option<Box<dyn Page>> {
+    fn update(
+        &mut self,
+        message: Message,
+    ) -> (cosmic::Task<cosmic::Action<Message>>, Option<Box<dyn Page>>) {
         if let Message::AlbumsPage(album_message) = message {
             match album_message {
                 AlbumsPageMessage::ShowAlbum(title) => {
-                    self.albums.show_album = Some(title);
+                    self.albums_library.show_album = Some(title);
                 }
                 AlbumsPageMessage::BackToAllAlbums => {
-                    self.albums.show_album = None;
+                    self.albums_library.show_album = None;
+                }
+                AlbumsPageMessage::PopulateAlbumsLibrary => {}
+                AlbumsPageMessage::Populate(some_album) => {
+                    some_album.map(|album| self.albums_library.add_album(album));
                 }
             }
         }
-        None
+        (cosmic::Task::none(), None)
     }
     fn view(&self) -> cosmic::Element<'_, Message> {
-        if self.albums.show_album.is_none() {
-            return elements_from_albums(&self.albums);
+        if self.albums_library.show_album.is_none() {
+            return elements_from_albums(&self.albums_library);
         }
-        elements_from_songs(self.albums.show_album.as_ref().unwrap(), &self.albums)
+        elements_from_songs(
+            self.albums_library.show_album.as_ref().unwrap(),
+            &self.albums_library,
+        )
     }
 }
 
