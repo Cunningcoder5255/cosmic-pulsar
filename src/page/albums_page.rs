@@ -24,7 +24,7 @@ use walkdir::WalkDir;
 #[derive(Debug, Clone)]
 pub enum AlbumsPageMessage {
     ShowAlbum(String),
-    Populate(Album),
+    Populate(Option<Album>),
     BackToAllAlbums,
     PopulateAlbumsLibrary,
 }
@@ -44,9 +44,9 @@ impl AlbumsLibrary {
     pub fn get_albums(&self) -> &BTreeSet<Album> {
         &self.albums
     }
-    pub fn populate(path: impl AsRef<Path>) -> Vec<cosmic::Task<Album>> {
+    pub fn populate(path: PathBuf) -> Vec<cosmic::Task<Option<Album>>> {
+        println!("{:#?}", path);
         let mut paths: Vec<PathBuf> = vec![];
-        let albums_library = AlbumsLibrary::default();
 
         // Go over the entries in the directory
         // Should make parallel at some point but im too retarded for that
@@ -62,33 +62,32 @@ impl AlbumsLibrary {
                 };
             })
         {
+            println!("Inspecting directory/file: {:#?}", entry);
             let Ok(entry) = entry else { continue }; // Skip bad paths
 
             paths.push(entry.into_path());
         }
 
-        let mut tasks: Vec<cosmic::Task<Album>> = vec![];
+        let mut tasks: Vec<cosmic::Task<Option<Album>>> = vec![];
 
         for path in paths {
-            tasks.push(cosmic::Task::perform(
-                Album::from_song(Song::from_path(path).unwrap()),
-                |album| album,
-            ))
+            // Skip invalid songs
+            // let Ok(song) = Song::from_path(path) else {
+            //     continue;
+            // };
+            println!("Pushing task for: {:#?}", path);
+            tasks.push(
+                cosmic::Task::perform(Song::from_path(path), |song| song)
+                    .and_then(|song| cosmic::Task::perform(Album::from_song(song), |album| album)),
+            );
+            // tasks.push(cosmic::Task::perform(Album::from_song(song), |album| album))
         }
 
         tasks
-
-        // Does this even do anything? Mutex might lock it so that you can only perform one operation at a time anyways
-        // let self_ref = Arc::new(Mutex::new(albums_library));
-        // paths.par_iter().for_each(|path| {
-        // println!("Adding file: {:#?}", path);
-        // self_ref.lock().unwrap().add_file(&path)
-        // });
-        // Arc::try_unwrap(self_ref).unwrap().into_inner().unwrap()
     }
     pub async fn add_file(&mut self, file: &Path) {
         // Create a song from the given file path
-        let Ok(song) = Song::from_path(file.into()) else {
+        let Ok(song) = Song::from_path(file.into()).await else {
             return;
         };
         let Some(album_title) = song.album_title.as_ref() else {
@@ -108,7 +107,13 @@ impl AlbumsLibrary {
         }
     }
     pub fn add_album(&mut self, album: Album) {
-        self.albums.insert(album);
+        if self.albums.contains(&album) {
+            let mut old_album = self.albums.take(&album).unwrap();
+            old_album = old_album.union(album);
+            self.albums.insert(old_album);
+        } else {
+            self.albums.insert(album);
+        }
     }
 }
 
@@ -167,7 +172,8 @@ impl Song {
             index,
         }
     }
-    fn from_path(path: PathBuf) -> Result<Self, lofty::error::LoftyError> {
+    async fn from_path(path: PathBuf) -> Result<Self, lofty::error::LoftyError> {
+        println!("Creating song from path: {:#?}", path);
         let lofty_file = lofty::read_from_path(path.clone())?;
         let file_tag = lofty_file
             .primary_tag()
@@ -203,6 +209,7 @@ impl Song {
         let artist = file_tag.artist().map(|artist| artist.to_string());
         let genre = file_tag.genre().map(|genre| genre.to_string());
         let year = file_tag.year();
+        println!("Done creating song: {:#?}", path);
 
         Ok(Self::new(
             title.to_string(),
@@ -242,10 +249,16 @@ impl Album {
             songs,
         }
     }
-    pub async fn from_song(song: Song) -> Album {
-        let title = song.title.clone();
-
-        Self::new(&title, vec![song].into_iter().collect())
+    pub fn union(mut self, mut other_album: Album) -> Self {
+        self.songs.append(&mut other_album.songs);
+        self
+    }
+    pub async fn from_song(song: Song) -> Option<Album> {
+        println!("Creating album from song: {:#?}", song);
+        let Some(title) = song.album_title.clone() else {
+            return None;
+        };
+        Some(Self::new(&title, vec![song].into_iter().collect()))
     }
     pub fn add_song(&mut self, song: Song) {
         self.songs.insert(song);
@@ -274,7 +287,7 @@ impl AlbumsPage {
         music_dir: &Path,
     ) -> Result<(AlbumsPage, cosmic::Task<cosmic::Action<Message>>), Box<dyn error::Error>> {
         let albums = AlbumsLibrary::default();
-        let populate_task = cosmic::Task::batch(AlbumsLibrary::populate(music_dir))
+        let populate_task = cosmic::Task::batch(AlbumsLibrary::populate(music_dir.into()))
             .map(|o| cosmic::Action::App(Message::AlbumsPage(AlbumsPageMessage::Populate(o))));
 
         Ok((
@@ -300,8 +313,8 @@ impl Page for AlbumsPage {
                     self.albums_library.show_album = None;
                 }
                 AlbumsPageMessage::PopulateAlbumsLibrary => {}
-                AlbumsPageMessage::Populate(album) => {
-                    self.albums_library.add_album(album);
+                AlbumsPageMessage::Populate(some_album) => {
+                    some_album.map(|album| self.albums_library.add_album(album));
                 }
             }
         }
