@@ -10,7 +10,8 @@ fn main() -> Result<(), cosmic::iced::Error> {
     #[cfg(feature = "dhat-ad-hoc")]
     let _profiler = dhat::Profiler::new_ad_hoc();
 
-    let settings = app::Settings::default().size(cosmic::iced::Size::new(3840.0, 2160.0)); //.debug(true);
+    let settings = app::Settings::default().size(cosmic::iced::Size::new(3840.0, 2160.0));
+    // .debug(true);
     cosmic::app::run::<App>(settings, ())?;
     Result::Ok(())
 }

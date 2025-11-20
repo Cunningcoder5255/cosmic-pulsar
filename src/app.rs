@@ -1,7 +1,10 @@
 use crate::page::*;
+use crate::player::Player;
 use albums_page::AlbumsPage;
 use cosmic;
 use cosmic::widget::nav_bar;
+use cosmic::widget::pane_grid;
+use cosmic::widget::pane_grid::Axis;
 use std::env;
 use std::path;
 
@@ -12,10 +15,17 @@ pub enum Message {
     ArtistsPage(artists_page::ArtistsPageMessage),
 }
 
+enum Pane {
+    Content,
+    Player,
+}
+
 pub struct App {
     page: Box<dyn Page>,
     core: cosmic::Core,
     nav_bar: nav_bar::Model,
+    pane_state: pane_grid::State<Pane>,
+    player: Player,
 }
 
 impl cosmic::Application for App {
@@ -43,13 +53,21 @@ impl cosmic::Application for App {
             home_dir.push("Music");
             music_dir = home_dir;
         } else {
+            // Slow and kind of stupid
             music_dir = path::PathBuf::from("/");
         }
         let (albums_page, task) = AlbumsPage::new(&music_dir).expect("Could not find albums: ");
+        // Initialize pane state
+        let (mut pane_state, pane) = pane_grid::State::new(Pane::Content);
+        pane_state.split(Axis::Vertical, pane, Pane::Player);
+
+        let player = Player::default();
         let app = Self {
             page: Box::new(albums_page),
             nav_bar,
             core,
+            pane_state,
+            player,
         };
         (app, task)
     }
@@ -61,7 +79,13 @@ impl cosmic::Application for App {
     }
     // View the state of the application
     fn view(&self) -> cosmic::Element<'_, Message> {
-        self.page.view()
+        pane_grid(&self.pane_state, |_pane, state, _is_maximized| {
+            pane_grid::Content::new(match state {
+                Pane::Player => self.player.view(),
+                Pane::Content => self.page.view(),
+            })
+        })
+        .into()
     }
     // Update the state of the application with messages from view
     fn update(&mut self, message: Message) -> cosmic::Task<cosmic::Action<Message>> {

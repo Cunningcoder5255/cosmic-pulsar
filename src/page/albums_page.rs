@@ -1,5 +1,8 @@
 // use crate::app::App;
 extern crate rayon;
+use crate::song::Song;
+use cosmic::iced_core::text::Wrapping;
+use std::io::Write;
 extern crate walkdir;
 use crate::app::Message;
 use crate::page::Page;
@@ -9,14 +12,9 @@ use cosmic::iced::Alignment;
 use cosmic::iced::Length;
 use cosmic::widget::*;
 use derivative::Derivative;
-use lofty::error::LoftyError;
-use lofty::file::TaggedFileExt;
-use lofty::tag::Accessor;
 use rayon::prelude::*;
-use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::error;
-use std::hash::Hash;
 use std::path::{Path, PathBuf};
 // use std::sync::{Arc, Mutex};
 use walkdir::WalkDir;
@@ -44,25 +42,29 @@ impl AlbumsLibrary {
     pub fn get_albums(&self) -> &BTreeSet<Album> {
         &self.albums
     }
+    /// Inspects the directory given and returns a task to create an album out of each file
+    // Should run async on startup in the future
     pub fn populate(path: PathBuf) -> Vec<cosmic::Task<Option<Album>>> {
-        println!("{:#?}", path);
+        let mut lock = std::io::stderr().lock();
+        let _ = writeln!(lock, "{:#?}", path);
         let mut paths: Vec<PathBuf> = vec![];
 
-        // Go over the entries in the directory
-        // Should make parallel at some point but im too retarded for that
         for entry in WalkDir::new(path)
             .contents_first(true)
             .follow_links(true)
             .into_iter()
             .filter(|e| {
                 if let Ok(e) = e {
-                    return !e.file_type().is_dir();
+                    let Ok(metadata) = Path::metadata(e.path()) else {
+                        return false;
+                    };
+                    return metadata.is_file();
                 } else {
                     return false;
                 };
             })
         {
-            println!("Inspecting directory/file: {:#?}", entry);
+            let _ = writeln!(lock, "Inspecting directory/file: {:#?}", entry);
             let Ok(entry) = entry else { continue }; // Skip bad paths
 
             paths.push(entry.into_path());
@@ -75,7 +77,7 @@ impl AlbumsLibrary {
             // let Ok(song) = Song::from_path(path) else {
             //     continue;
             // };
-            println!("Pushing task for: {:#?}", path);
+            let _ = writeln!(lock, "Pushing task for: {:#?}", path);
             tasks.push(
                 cosmic::Task::perform(Song::from_path(path), |song| song)
                     .and_then(|song| cosmic::Task::perform(Album::from_song(song), |album| album)),
@@ -114,113 +116,6 @@ impl AlbumsLibrary {
         } else {
             self.albums.insert(album);
         }
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct Song {
-    pub title: String,
-    pub artist: Option<String>,
-    pub album_title: Option<String>,
-    pub genre: Option<String>,
-    pub year: Option<u32>,
-    pub picture: image::Handle,
-    pub path: PathBuf,
-    pub index: Option<u32>,
-}
-impl Ord for Song {
-    fn cmp(&self, other: &Self) -> Ordering {
-        if self.index > other.index {
-            return Ordering::Greater;
-        } else if self.index == other.index {
-            return Ordering::Equal;
-        } else {
-            return Ordering::Less;
-        }
-    }
-}
-impl PartialOrd for Song {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if self.index > other.index {
-            return Some(Ordering::Greater);
-        } else if self.index == other.index {
-            return Some(Ordering::Equal);
-        } else {
-            return Some(Ordering::Less);
-        }
-    }
-}
-impl Song {
-    fn new(
-        title: String,
-        artist: Option<String>,
-        album_title: Option<String>,
-        genre: Option<String>,
-        year: Option<u32>,
-        picture: image::Handle,
-        path: &Path,
-        index: Option<u32>,
-    ) -> Self {
-        Self {
-            title,
-            artist,
-            genre,
-            album_title,
-            year,
-            picture,
-            path: path.to_path_buf(),
-            index,
-        }
-    }
-    async fn from_path(path: PathBuf) -> Result<Self, lofty::error::LoftyError> {
-        println!("Creating song from path: {:#?}", path);
-        let lofty_file = lofty::read_from_path(path.clone())?;
-        let file_tag = lofty_file
-            .primary_tag()
-            .ok_or(lofty::error::LoftyError::new(
-                lofty::error::ErrorKind::FakeTag,
-            ))?;
-        // Most unreadable line of code I've ever written
-        // Attempts to parse file name, if it can't returns lofty error TextDecode
-        let file_name = path
-            .file_name()
-            .ok_or_else(|| {
-                lofty::error::LoftyError::new(lofty::error::ErrorKind::TextDecode(
-                    "Could not decode file name.",
-                ))
-            })?
-            .to_str()
-            .ok_or(lofty::error::LoftyError::new(
-                lofty::error::ErrorKind::TextDecode("Could not convert file name to rust string."),
-            ))?;
-        // Set title either to the title tag or the file name
-        let title = file_tag.title().unwrap_or_else(|| file_name.into());
-        let album_title = file_tag.album().map(|title| title.to_string());
-        let picture = file_tag.pictures().to_vec().pop();
-        let picture_handle: image::Handle;
-        if let Some(picture) = picture {
-            picture_handle = image::Handle::from_bytes(picture.into_data());
-        } else {
-            picture_handle = image::Handle::from_bytes(
-                include_bytes!("../../resources/images/albumplaceholder.png").as_slice(),
-            );
-        }
-        let index = file_tag.track();
-        let artist = file_tag.artist().map(|artist| artist.to_string());
-        let genre = file_tag.genre().map(|genre| genre.to_string());
-        let year = file_tag.year();
-        println!("Done creating song: {:#?}", path);
-
-        Ok(Self::new(
-            title.to_string(),
-            artist,
-            album_title,
-            genre,
-            year,
-            picture_handle,
-            &path,
-            index,
-        ))
     }
 }
 
@@ -380,28 +275,45 @@ fn elements_from_songs(album: &str, library: &AlbumsLibrary) -> Element<'static,
 
 fn elements_from_albums(albums: &AlbumsLibrary) -> Element<'static, Message> {
     let space = cosmic::theme::spacing().space_s;
-    // let space_s = cosmic::theme::spacing().space_xxxs;
+    let space_s = cosmic::theme::spacing().space_xxs;
+    let space_xs = cosmic::theme::spacing().space_xxxs;
     let mut albums_grid: Vec<Element<Message>> = vec![];
     for album in albums.get_albums() {
-        static CARD_WIDTH: u16 = 150;
-        let picture: Element<Message> = image(album.get_picture().clone()).width(CARD_WIDTH).into();
-        let label = text(album.title.clone()).width(CARD_WIDTH);
-        let album_card: Element<Message> =
-            button::custom(column::with_capacity(2).push(picture).push(label))
-                .on_press(Message::AlbumsPage(AlbumsPageMessage::ShowAlbum(
-                    album.title.clone(),
-                )))
-                .height(200)
-                .padding(space)
-                .into();
+        static CARD_WIDTH: f32 = 100.0;
+        let picture: Element<Message> = image(album.get_picture().clone())
+            .border_radius([4.0; 4]) // Currently doesn't work
+            .into();
+        let label = text(album.title.clone())
+            .center()
+            .wrapping(Wrapping::WordOrGlyph);
+        let album_card: Element<Message> = container(
+            button::custom(
+                column::with_capacity(2)
+                    .push(picture)
+                    .push(label)
+                    .spacing(space_xs),
+            )
+            .on_press(Message::AlbumsPage(AlbumsPageMessage::ShowAlbum(
+                album.title.clone(),
+            )))
+            .height(CARD_WIDTH * 1.5)
+            .padding(space_s),
+        )
+        .max_width(CARD_WIDTH)
+        .into();
         albums_grid.push(album_card);
     }
 
-    Element::from(scrollable(
-        flex_row(albums_grid)
-            .justify_content(JustifyContent::SpaceBetween)
-            .spacing(space)
-            .padding(space)
-            .width(Length::Fill),
-    ))
+    Element::from(
+        container(scrollable(
+            container(
+                flex_row(albums_grid)
+                    .justify_content(JustifyContent::SpaceEvenly)
+                    .spacing(space)
+                    // .padding(space)
+                    .width(Length::Fill),
+            )
+            .padding(space),
+        )), // .padding(space),
+    )
 }
