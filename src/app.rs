@@ -25,7 +25,7 @@ pub struct App {
     core: cosmic::Core,
     nav_bar: nav_bar::Model,
     pane_state: pane_grid::State<Pane>,
-    player: Player,
+    // player: Player,
 }
 
 impl cosmic::Application for App {
@@ -59,15 +59,15 @@ impl cosmic::Application for App {
         let (albums_page, task) = AlbumsPage::new(&music_dir).expect("Could not find albums: ");
         // Initialize pane state
         let (mut pane_state, pane) = pane_grid::State::new(Pane::Content);
-        pane_state.split(Axis::Vertical, pane, Pane::Player);
+    pane_state.split(Axis::Vertical, pane, Pane::Player);
 
-        let player = Player::default();
+        // let player = Player::default();
         let app = Self {
             page: Box::new(albums_page),
             nav_bar,
             core,
             pane_state,
-            player,
+            
         };
         (app, task)
     }
@@ -81,7 +81,7 @@ impl cosmic::Application for App {
     fn view(&self) -> cosmic::Element<'_, Message> {
         pane_grid(&self.pane_state, |_pane, state, _is_maximized| {
             pane_grid::Content::new(match state {
-                Pane::Player => self.player.view(),
+                Pane::Player => cosmic::widget::text("blah").into(),
                 Pane::Content => self.page.view(),
             })
         })

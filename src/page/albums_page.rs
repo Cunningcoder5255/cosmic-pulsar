@@ -251,7 +251,7 @@ fn elements_from_songs(album: &str, library: &AlbumsLibrary) -> Element<'static,
             .width(Length::Fill)
             .height(Length::Fill)
             .align_y(Alignment::Center);
-        let index = text(song.index.expect("Song does not have an index").to_string())
+        let index = text(song.index.map(|i| i.to_string()).unwrap_or_else(|| "".to_string()))
             .align_y(Alignment::Center)
             .height(Length::Fill);
         let container = container(
