@@ -16,7 +16,6 @@ use rayon::prelude::*;
 use std::collections::BTreeSet;
 use std::error;
 use std::path::{Path, PathBuf};
-// use std::sync::{Arc, Mutex};
 use walkdir::WalkDir;
 
 #[derive(Debug, Clone)]

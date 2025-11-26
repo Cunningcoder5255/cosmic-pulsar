@@ -28,6 +28,15 @@ impl Player {
             progress,
         }
     }
+    pub fn default() -> Player {
+        Self {
+            song_index: 0,
+            playlist: vec![],
+            playing: false,
+            shuffle: false,
+            progress: Duration::from_secs(0),
+        }
+    }
     /// Begin playing the next song in the playlist
     pub fn play(&mut self) {
         todo!()
