@@ -1,5 +1,6 @@
 use crate::page::*;
 use crate::player::Player;
+use crate::song::Song;
 use albums_page::AlbumsPage;
 use cosmic;
 use cosmic::widget::nav_bar;
@@ -7,12 +8,14 @@ use cosmic::widget::pane_grid;
 use cosmic::widget::pane_grid::Axis;
 use std::env;
 use std::path;
+extern crate rodio;
 
 #[derive(Debug, Clone)]
 pub enum Message {
     FilesPage(files_page::FilesPageMessage),
     AlbumsPage(albums_page::AlbumsPageMessage),
     ArtistsPage(artists_page::ArtistsPageMessage),
+    PlaySong(Song),
 }
 
 enum Pane {
@@ -25,7 +28,7 @@ pub struct App {
     core: cosmic::Core,
     nav_bar: nav_bar::Model,
     pane_state: pane_grid::State<Pane>,
-    // player: Player,
+    player: Player,
 }
 
 impl cosmic::Application for App {
@@ -59,7 +62,7 @@ impl cosmic::Application for App {
         let (albums_page, task) = AlbumsPage::new(&music_dir).expect("Could not find albums: ");
         // Initialize pane state
         let (mut pane_state, pane) = pane_grid::State::new(Pane::Content);
-    pane_state.split(Axis::Vertical, pane, Pane::Player);
+        pane_state.split(Axis::Vertical, pane, Pane::Player);
 
         // let player = Player::default();
         let app = Self {
@@ -67,7 +70,7 @@ impl cosmic::Application for App {
             nav_bar,
             core,
             pane_state,
-            
+            player: Player::default(),
         };
         (app, task)
     }
@@ -81,7 +84,7 @@ impl cosmic::Application for App {
     fn view(&self) -> cosmic::Element<'_, Message> {
         pane_grid(&self.pane_state, |_pane, state, _is_maximized| {
             pane_grid::Content::new(match state {
-                Pane::Player => cosmic::widget::text("blah").into(),
+                Pane::Player => self.player.view(),
                 Pane::Content => self.page.view(),
             })
         })
@@ -89,6 +92,10 @@ impl cosmic::Application for App {
     }
     // Update the state of the application with messages from view
     fn update(&mut self, message: Message) -> cosmic::Task<cosmic::Action<Message>> {
+        if let Message::PlaySong(song) = message {
+            self.player.play_song(song);
+            return cosmic::Task::none();
+        };
         let page = self.page.update(message);
         if let (task, Some(p)) = page {
             self.page = p;

@@ -250,16 +250,21 @@ fn elements_from_songs(album: &str, library: &AlbumsLibrary) -> Element<'static,
             .width(Length::Fill)
             .height(Length::Fill)
             .align_y(Alignment::Center);
-        let index = text(song.index.map(|i| i.to_string()).unwrap_or_else(|| "".to_string()))
-            .align_y(Alignment::Center)
-            .height(Length::Fill);
-        let container = container(
+        let index = text(
+            song.index
+                .map(|i| i.to_string())
+                .unwrap_or_else(|| "".to_string()),
+        )
+        .align_y(Alignment::Center)
+        .height(Length::Fill);
+        let container = button::custom(
             row::with_capacity::<Message>(3)
                 .push(picture)
                 .push(name)
                 .push(index)
                 .spacing(space),
         )
+        .on_press(Message::PlaySong(song.clone()))
         .height(HEIGHT);
         songs_list.push(container.into());
     }
