@@ -1,3 +1,4 @@
+pub use crate::page::albums_page::Album;
 use cosmic::widget::*;
 use lofty::file::AudioFile;
 use lofty::file::TaggedFileExt;

@@ -1,5 +1,6 @@
 use crate::page::*;
 use crate::player::Player;
+use crate::song::Album;
 use crate::song::Song;
 use albums_page::AlbumsPage;
 use cosmic;
@@ -16,6 +17,7 @@ pub enum Message {
     AlbumsPage(albums_page::AlbumsPageMessage),
     ArtistsPage(artists_page::ArtistsPageMessage),
     PlaySong(Song),
+    PlayAlbum((Album, Song)),
 }
 
 enum Pane {
@@ -28,7 +30,7 @@ pub struct App {
     core: cosmic::Core,
     nav_bar: nav_bar::Model,
     pane_state: pane_grid::State<Pane>,
-    player: Player,
+    pub player: Player,
 }
 
 impl cosmic::Application for App {
@@ -92,14 +94,24 @@ impl cosmic::Application for App {
     }
     // Update the state of the application with messages from view
     fn update(&mut self, message: Message) -> cosmic::Task<cosmic::Action<Message>> {
-        if let Message::PlaySong(song) = message {
-            self.player.play_song(song);
-            return cosmic::Task::none();
-        };
-        let page = self.page.update(message);
-        if let (task, Some(p)) = page {
-            self.page = p;
-            return task;
+        match message {
+            Message::PlaySong(song) => {
+                self.player.play_song(song);
+                return cosmic::Task::none();
+            }
+            Message::PlayAlbum((album, song)) => {
+                self.player.clear_playlist();
+                self.player
+                    .add_to_playlist(album.get_songs().clone().into_iter().collect());
+                self.player.play_index(album.get_song_index(&song).unwrap());
+            }
+            _ => {
+                let page = self.page.update(message);
+                if let (task, Some(p)) = page {
+                    self.page = p;
+                    return task;
+                }
+            }
         }
         cosmic::Task::none()
     }

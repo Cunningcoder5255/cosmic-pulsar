@@ -1,4 +1,5 @@
 // use crate::app::App;
+use crate::HEIGHT;
 extern crate rayon;
 use crate::song::Song;
 use cosmic::iced_core::text::Wrapping;
@@ -170,6 +171,14 @@ impl Album {
         }
         picture
     }
+    pub fn get_song_index(&self, given_song: &Song) -> Option<usize> {
+        for (i, song) in self.songs.iter().enumerate() {
+            if song == given_song {
+                return Some(i);
+            }
+        }
+        None
+    }
 }
 
 pub struct AlbumsPage {
@@ -243,8 +252,7 @@ fn elements_from_songs(album: &str, library: &AlbumsLibrary) -> Element<'static,
     };
 
     for song in album.get_songs() {
-        println!("Displaying {:#?}", song);
-        const HEIGHT: u16 = 100;
+        // println!("Displaying {:#?}", song);
         let picture = image(song.picture.clone());
         let name = text(song.title.clone())
             .width(Length::Fill)
@@ -264,7 +272,7 @@ fn elements_from_songs(album: &str, library: &AlbumsLibrary) -> Element<'static,
                 .push(index)
                 .spacing(space),
         )
-        .on_press(Message::PlaySong(song.clone()))
+        .on_press(Message::PlayAlbum((album.clone(), song.clone())))
         .height(HEIGHT);
         songs_list.push(container.into());
     }
