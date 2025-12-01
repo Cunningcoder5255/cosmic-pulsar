@@ -3,6 +3,7 @@ use crate::app::Message;
 use crate::song::Song;
 use cosmic::Element;
 use cosmic::iced::Length;
+use cosmic::iced_core::Alignment;
 use cosmic::widget::*;
 use rodio::Decoder;
 use rodio::stream::OutputStream;
@@ -108,10 +109,15 @@ impl Player {
     /// Draws the content for the music player
     /// Split into two sections, the top section which shows the current song, and the bottom section which shows the playlist
     pub fn view(&self) -> Element<'_, Message> {
+        let spacing = cosmic::theme::spacing().space_s;
+        // let spacing_l = cosmic::theme::spacing().space_l;
+        // let spacing_s = cosmic::theme::spacing().space_xxs;
         let Some(song) = self.playlist.get(self.song_index) else {
             return text("No song playing.").into();
         };
-        let song_image: Element<Message> = image(song.picture.clone()).into();
+        let song_image: Element<Message> = container(image(song.picture.clone()))
+            .padding(spacing)
+            .into();
         let song_progress: Element<Message> = progress_bar(
             0.0..=song.duration.as_secs_f32(),
             self.progress.as_secs_f32(),
@@ -120,27 +126,39 @@ impl Player {
         let mut playlist_songs: Vec<Element<Message>> = vec![];
         for song in self.playlist.iter() {
             let picture = image(&song.picture);
-            let title = text(&song.title).width(Length::Fill);
+            let title = text(&song.title)
+                .height(Length::Fill)
+                .align_y(Alignment::Center)
+                .width(Length::Fill);
             let index = text(
                 song.index
                     .map(|i| i.to_string())
                     .unwrap_or_else(|| "".to_string()),
-            );
+            )
+            .height(Length::Fill)
+            .align_y(Alignment::Center);
             let song_container = row::with_capacity::<Message>(3)
                 .push(picture)
                 .push(title)
                 .push(index)
+                .spacing(spacing)
                 .height(HEIGHT);
             playlist_songs.push(song_container.into());
         }
 
-        let playlist_container = scrollable(column::with_children(playlist_songs));
+        let playlist_container = scrollable(
+            column::with_children(playlist_songs)
+                .spacing(spacing)
+                .padding(spacing),
+        );
 
         container(
             column::with_capacity(3)
                 .push(song_image)
                 .push(song_progress)
-                .push(playlist_container),
+                .push(playlist_container)
+                .padding(spacing)
+                .spacing(spacing),
         )
         .into()
     }

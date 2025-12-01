@@ -235,7 +235,7 @@ impl Page for AlbumsPage {
 }
 
 fn elements_from_songs(album: &str, library: &AlbumsLibrary) -> Element<'static, Message> {
-    println!("Displaying...");
+    // println!("Displaying...");
     let space = cosmic::theme::spacing().space_s;
     let mut songs_list: Vec<Element<Message>> = vec![];
     songs_list.push(
@@ -276,7 +276,7 @@ fn elements_from_songs(album: &str, library: &AlbumsLibrary) -> Element<'static,
         .height(HEIGHT);
         songs_list.push(container.into());
     }
-    println!("Done");
+    // println!("Done");
     scrollable(
         column::with_children(songs_list)
             .spacing(space)
