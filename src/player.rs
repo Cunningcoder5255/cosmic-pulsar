@@ -1,5 +1,6 @@
 use crate::HEIGHT;
 use crate::app::Message;
+use crate::page::albums_page::Album;
 use crate::song::Song;
 use cosmic::Element;
 use cosmic::iced::Length;
@@ -11,14 +12,21 @@ use std::fs::File;
 use std::io::BufReader;
 use std::time::Duration;
 
+#[derive(Debug, Clone)]
+pub enum PlayerMessage {
+    PlaySong(Song),
+    PlayAlbum((Album, Song)),
+    Update,
+}
+
 pub struct Player {
     song_index: usize,
     playlist: Vec<Song>,
     playing: bool,
     shuffle: bool,
     progress: Duration,
-    stream_handle: OutputStream, // Keep stream handle alive to continue playback
-    sink: rodio::Sink,           // Keep audio sink alive to continue playback
+    _stream_handle: OutputStream, // Keep stream handle alive to continue playback
+    sink: rodio::Sink,            // Keep audio sink alive to continue playback
 }
 
 impl Player {
@@ -28,7 +36,7 @@ impl Player {
         playing: bool,
         shuffle: bool,
         progress: Duration,
-        stream_handle: OutputStream,
+        _stream_handle: OutputStream,
         sink: rodio::Sink,
     ) -> Player {
         Self {
@@ -37,7 +45,7 @@ impl Player {
             playing,
             shuffle,
             progress,
-            stream_handle,
+            _stream_handle,
             sink,
         }
     }
@@ -51,8 +59,28 @@ impl Player {
             shuffle: false,
             progress: Duration::from_secs(0),
             sink: rodio::Sink::connect_new(&stream_handle.mixer()),
-            stream_handle,
+            _stream_handle: stream_handle,
         }
+    }
+    /// Handles cosmic messages
+    pub fn update(&mut self, message: PlayerMessage) {
+        match message {
+            PlayerMessage::PlaySong(song) => {
+                self.play_song(song);
+            }
+            PlayerMessage::PlayAlbum((album, song)) => {
+                self.clear_playlist();
+                self.add_to_playlist(album.get_songs().clone().into_iter().collect());
+                self.play_index(album.get_song_index(&song).unwrap());
+            }
+            PlayerMessage::Update => {
+                self.progress = self.sink.get_pos();
+            }
+        }
+    }
+    /// Returns whether or not the Player is playing a song
+    pub fn is_playing(&self) -> bool {
+        self.playing
     }
     /// Adds the given songs to the queue
     pub fn add_to_playlist(&mut self, mut songs: Vec<Song>) {
@@ -116,12 +144,15 @@ impl Player {
             return text("No song playing.").into();
         };
         let song_image: Element<Message> = container(image(song.picture.clone()))
+            .center_x(Length::Fill)
+            .max_height(400)
             .padding(spacing)
             .into();
         let song_progress: Element<Message> = progress_bar(
             0.0..=song.duration.as_secs_f32(),
             self.progress.as_secs_f32(),
         )
+        .height(10)
         .into();
         let mut playlist_songs: Vec<Element<Message>> = vec![];
         for song in self.playlist.iter() {

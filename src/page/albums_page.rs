@@ -1,5 +1,7 @@
 // use crate::app::App;
 use crate::HEIGHT;
+use crate::page::card_style;
+use crate::player::PlayerMessage;
 extern crate rayon;
 use crate::song::Song;
 use cosmic::iced_core::text::Wrapping;
@@ -265,14 +267,20 @@ fn elements_from_songs(album: &str, library: &AlbumsLibrary) -> Element<'static,
         )
         .align_y(Alignment::Center)
         .height(Length::Fill);
-        let container = button::custom(
-            row::with_capacity::<Message>(3)
-                .push(picture)
-                .push(name)
-                .push(index)
-                .spacing(space),
+        let container = container(
+            button::custom(
+                row::with_capacity::<Message>(3)
+                    .push(picture)
+                    .push(name)
+                    .push(index)
+                    .spacing(space),
+            )
+            .on_press(Message::Player(PlayerMessage::PlayAlbum((
+                album.clone(),
+                song.clone(),
+            )))),
         )
-        .on_press(Message::PlayAlbum((album.clone(), song.clone())))
+        .style(card_style)
         .height(HEIGHT);
         songs_list.push(container.into());
     }
@@ -311,6 +319,7 @@ fn elements_from_albums(albums: &AlbumsLibrary) -> Element<'static, Message> {
             .height(CARD_WIDTH * 1.5)
             .padding(space_s),
         )
+        .style(card_style)
         .max_width(CARD_WIDTH)
         .into();
         albums_grid.push(album_card);

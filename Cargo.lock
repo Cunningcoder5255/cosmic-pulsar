@@ -1096,6 +1096,7 @@ dependencies = [
  "lofty",
  "rayon",
  "rodio",
+ "tokio",
  "walkdir",
 ]
 
@@ -4430,6 +4431,7 @@ dependencies = [
  "dasp_sample",
  "num-rational",
  "symphonia",
+ "tracing",
 ]
 
 [[package]]

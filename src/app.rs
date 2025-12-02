@@ -1,9 +1,16 @@
 use crate::page::*;
+use crate::player;
 use crate::player::Player;
-use crate::song::Album;
-use crate::song::Song;
+use cosmic::iced::futures::SinkExt;
+use cosmic::iced::time::Duration;
+use cosmic::iced_futures;
+use player::PlayerMessage;
+extern crate tokio;
+// use crate::song::Album;
+// use crate::song::Song;
 use albums_page::AlbumsPage;
 use cosmic;
+use cosmic::iced::Subscription;
 use cosmic::widget::nav_bar;
 use cosmic::widget::pane_grid;
 use cosmic::widget::pane_grid::Axis;
@@ -16,8 +23,7 @@ pub enum Message {
     FilesPage(files_page::FilesPageMessage),
     AlbumsPage(albums_page::AlbumsPageMessage),
     ArtistsPage(artists_page::ArtistsPageMessage),
-    PlaySong(Song),
-    PlayAlbum((Album, Song)),
+    Player(player::PlayerMessage),
 }
 
 enum Pane {
@@ -95,15 +101,9 @@ impl cosmic::Application for App {
     // Update the state of the application with messages from view
     fn update(&mut self, message: Message) -> cosmic::Task<cosmic::Action<Message>> {
         match message {
-            Message::PlaySong(song) => {
-                self.player.play_song(song);
+            Message::Player(player_message) => {
+                self.player.update(player_message);
                 return cosmic::Task::none();
-            }
-            Message::PlayAlbum((album, song)) => {
-                self.player.clear_playlist();
-                self.player
-                    .add_to_playlist(album.get_songs().clone().into_iter().collect());
-                self.player.play_index(album.get_song_index(&song).unwrap());
             }
             _ => {
                 let page = self.page.update(message);
@@ -114,6 +114,19 @@ impl cosmic::Application for App {
             }
         }
         cosmic::Task::none()
+    }
+    /// Subscription, primarily for updating the song progress bar as time passes
+    fn subscription(&self) -> Subscription<Message> {
+        return Subscription::run(|| {
+            iced_futures::stream::channel(1, |mut emitter| async move {
+                let mut interval = tokio::time::interval(Duration::from_millis(100));
+
+                loop {
+                    interval.tick().await;
+                    _ = emitter.send(Message::Player(PlayerMessage::Update)).await;
+                }
+            })
+        });
     }
     /// Enable the nav bar to appear in your application when `Some`.
     fn nav_model(&self) -> Option<&nav_bar::Model> {
