@@ -1,4 +1,10 @@
 pub use crate::page::albums_page::Album;
+use cosmic::iced;
+use cosmic::iced::{Alignment, Length};
+extern crate cosmic;
+use crate::HEIGHT;
+use crate::app::Message;
+use crate::page::card_style;
 use cosmic::widget::*;
 use lofty::file::AudioFile;
 use lofty::file::TaggedFileExt;
@@ -66,6 +72,32 @@ impl Song {
             index,
             duration,
         }
+    }
+    pub fn display(&self) -> cosmic::Element<'_, Message> {
+        let space = cosmic::theme::spacing().space_s;
+        let picture = image(self.picture.clone());
+        let name = text(self.title.clone())
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_y(Alignment::Center);
+        let index = text(
+            self.index
+                .map(|i| i.to_string())
+                .unwrap_or_else(|| "".to_string()),
+        )
+        .align_y(Alignment::Center)
+        .height(Length::Fill);
+        let container = container(
+            row::with_capacity::<Message>(3)
+                .push(picture)
+                .push(name)
+                .push(index)
+                .spacing(space),
+        )
+        .style(card_style)
+        .height(HEIGHT);
+
+        container.into()
     }
     pub async fn from_path(path: PathBuf) -> Result<Self, lofty::error::LoftyError> {
         let mut stderr_lock = std::io::stderr().lock();

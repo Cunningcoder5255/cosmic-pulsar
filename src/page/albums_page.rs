@@ -1,5 +1,4 @@
 // use crate::app::App;
-use crate::HEIGHT;
 use crate::page::card_style;
 use crate::player::PlayerMessage;
 extern crate rayon;
@@ -11,7 +10,7 @@ use crate::app::Message;
 use crate::page::Page;
 use cosmic;
 use cosmic::Element;
-use cosmic::iced::Alignment;
+// use cosmic::iced::Alignment;
 use cosmic::iced::Length;
 use cosmic::widget::*;
 use derivative::Derivative;
@@ -236,7 +235,7 @@ impl Page for AlbumsPage {
     }
 }
 
-fn elements_from_songs(album: &str, library: &AlbumsLibrary) -> Element<'static, Message> {
+fn elements_from_songs<'a>(album: &str, library: &'a AlbumsLibrary) -> Element<'a, Message> {
     // println!("Displaying...");
     let space = cosmic::theme::spacing().space_s;
     let mut songs_list: Vec<Element<Message>> = vec![];
@@ -254,35 +253,10 @@ fn elements_from_songs(album: &str, library: &AlbumsLibrary) -> Element<'static,
     };
 
     for song in album.get_songs() {
-        // println!("Displaying {:#?}", song);
-        let picture = image(song.picture.clone());
-        let name = text(song.title.clone())
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_y(Alignment::Center);
-        let index = text(
-            song.index
-                .map(|i| i.to_string())
-                .unwrap_or_else(|| "".to_string()),
-        )
-        .align_y(Alignment::Center)
-        .height(Length::Fill);
-        let container = container(
-            button::custom(
-                row::with_capacity::<Message>(3)
-                    .push(picture)
-                    .push(name)
-                    .push(index)
-                    .spacing(space),
-            )
-            .on_press(Message::Player(PlayerMessage::PlayAlbum((
-                album.clone(),
-                song.clone(),
-            )))),
-        )
-        .style(card_style)
-        .height(HEIGHT);
-        songs_list.push(container.into());
+        let button = button::custom(song.display()).on_press(Message::Player(
+            PlayerMessage::PlayAlbum((album.clone(), song.clone())),
+        ));
+        songs_list.push(button.into());
     }
     // println!("Done");
     scrollable(
