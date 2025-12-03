@@ -1,5 +1,5 @@
-pub use crate::page::albums_page::Album;
-use cosmic::iced;
+// pub use crate::page::albums_page::Album;
+// use cosmic::iced;
 use cosmic::iced::{Alignment, Length};
 extern crate cosmic;
 use crate::HEIGHT;

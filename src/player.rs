@@ -1,10 +1,11 @@
-use crate::HEIGHT;
+// use crate::HEIGHT;
 use crate::app::Message;
 use crate::page::albums_page::Album;
 use crate::song::Song;
 use cosmic::Element;
 use cosmic::iced::Length;
-use cosmic::iced_core::Alignment;
+// use cosmic::iced_core::Alignment;
+use cosmic::theme;
 use cosmic::widget::*;
 use rodio::Decoder;
 use rodio::stream::OutputStream;
@@ -14,9 +15,11 @@ use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub enum PlayerMessage {
-    PlaySong(Song),
-    PlayAlbum((Album, Song)),
-    Update,
+    PlaySong(Song),           // Plays a specific song, clearing the playlist
+    PlayAlbum((Album, Song)), // Plays an album, clearing the playlist
+    Play,                     // Start playback
+    Pause,                    // Stop playback, keeping playlist
+    Update,                   // Updates the playing song and the progress
 }
 
 pub struct Player {
@@ -72,6 +75,12 @@ impl Player {
                 self.clear_playlist();
                 self.add_to_playlist(album.get_songs().clone().into_iter().collect());
                 self.play_index(album.get_song_index(&song).unwrap());
+            }
+            PlayerMessage::Play => {
+                self.play();
+            }
+            PlayerMessage::Pause => {
+                self.pause();
             }
             PlayerMessage::Update => {
                 if self.song_index == 0 {
@@ -143,16 +152,16 @@ impl Player {
     /// If the sink does not start from playlist index 0, this produce unexpected results
     pub fn play_index(&mut self, index: usize) {
         // Skip all songs up to index
-        eprintln!("{:#?}", index - self.song_index);
+        // eprintln!("{:#?}", index - self.song_index);
         if index > 0 {
             for _ in 0..(index - self.song_index) {
-                eprintln!("Skipping one song.");
+                // eprintln!("Skipping one song.");
                 self.sink.skip_one();
             }
             // self.sink.skip_one();
         }
         // eprintln!("Playlist: {:#?}", self.playlist);
-        eprintln!("Sink empty: {:#?}", self.sink.empty());
+        // eprintln!("Sink empty: {:#?}", self.sink.empty());
         // Play
         self.play();
         // Set the index
@@ -176,20 +185,50 @@ impl Player {
         let song_image: Element<Message> = container(image(song.picture.clone()))
             .center_x(Length::Fill)
             .max_height(400)
-            .padding(spacing)
             .into();
-        let song_title = text(song.title.clone());
+        let song_title = container(text(song.title.clone())).center_x(Length::Fill);
         let song_progress: Element<Message> = progress_bar(
             0.0..=song.duration.as_secs_f32(),
             self.progress.as_secs_f32(),
         )
         .height(10)
         .into();
+        // TODO: Add fallback icons
+        let play_pause_button: Element<Message> = if self.playing {
+            // let icon = icon::from_name("media-playback-stop"); Doesn't work ig
+            let icon: Element<Message> = svg(svg::Handle::from_memory(
+                include_bytes!("../resources/svg/pause.svg").as_slice(),
+            ))
+            .into();
+            button::custom(icon)
+                .height(50)
+                .width(50)
+                .on_press(Message::Player(PlayerMessage::Pause))
+                .class(theme::Button::Suggested)
+                .into()
+        } else {
+            // let icon = icon::from_name("media-playback-start")
+            let icon: Element<Message> = svg(svg::Handle::from_memory(
+                include_bytes!("../resources/svg/play.svg").as_slice(),
+            ))
+            .into();
+            button::custom(icon)
+                .height(50)
+                .width(50)
+                .on_press(Message::Player(PlayerMessage::Play))
+                .class(theme::Button::Suggested)
+                .into()
+        };
+        let play_pause = container(play_pause_button)
+            // .center_y(60)
+            .center_x(Length::Fill);
         let playing_song = container(
-            column::with_capacity(3)
+            column::with_capacity(4)
                 .push(song_image)
                 .push(song_title)
-                .push(song_progress),
+                .push(song_progress)
+                .push(play_pause)
+                .spacing(spacing),
         );
 
         let mut playlist_songs: Vec<Element<Message>> = vec![];
@@ -200,9 +239,7 @@ impl Player {
         }
 
         let playlist_container = scrollable(
-            column::with_children(playlist_songs)
-                .spacing(spacing)
-                .padding(spacing),
+            column::with_children(playlist_songs).spacing(spacing), // .padding(spacing),
         );
 
         container(
