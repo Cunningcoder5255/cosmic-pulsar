@@ -77,7 +77,7 @@ impl Player {
                 if self.song_index == 0 {
                     return;
                 }
-                eprintln!("index before: {:#?}", self.song_index);
+                // eprintln!("index before: {:#?}", self.song_index);
                 let mut prior_duration = Duration::from_secs(0);
                 let pos = self.sink.get_pos();
 
@@ -97,9 +97,9 @@ impl Player {
                     self.song_index = i;
                 }
 
-                eprintln!("index: {:#?}", self.song_index);
-                eprintln!("prior duration: {:#?}", prior_duration);
-                eprintln!("pos: {:#?}", pos);
+                // eprintln!("index: {:#?}", self.song_index);
+                // eprintln!("prior duration: {:#?}", prior_duration);
+                // eprintln!("pos: {:#?}", pos);
                 self.progress = pos - prior_duration;
             }
         }
@@ -113,7 +113,7 @@ impl Player {
         // Add songs to sink playlist
         for song in songs.iter() {
             self.sink.add_song(&song);
-            eprintln!("Adding {:#?} to playlist.", song);
+            // eprintln!("Adding {:#?} to playlist.", song);
         }
 
         self.playlist.append(&mut songs);
@@ -142,20 +142,21 @@ impl Player {
     /// Begin playing the song at the given index in the playlist
     /// If the sink does not start from playlist index 0, this produce unexpected results
     pub fn play_index(&mut self, index: usize) {
-        // Set the index
-        self.song_index = index;
         // Skip all songs up to index
-        if index != 0 {
-            for _ in [0..index - self.song_index] {
+        eprintln!("{:#?}", index - self.song_index);
+        if index > 0 {
+            for _ in 0..(index - self.song_index) {
                 eprintln!("Skipping one song.");
                 self.sink.skip_one();
             }
-            self.sink.skip_one();
+            // self.sink.skip_one();
         }
-        eprintln!("Playlist: {:#?}", self.playlist);
+        // eprintln!("Playlist: {:#?}", self.playlist);
         eprintln!("Sink empty: {:#?}", self.sink.empty());
         // Play
         self.play();
+        // Set the index
+        self.song_index = index;
     }
     /// Begin playing the next song in the playlist
     pub fn play_next(&mut self) {
