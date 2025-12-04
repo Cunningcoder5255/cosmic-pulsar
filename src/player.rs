@@ -20,6 +20,7 @@ pub enum PlayerMessage {
     Play,                     // Start playback
     Pause,                    // Stop playback, keeping playlist
     Update,                   // Updates the playing song and the progress
+    ProgressSlider(f32),      // Updates the sink to play the current song at the appropriate time
 }
 
 pub struct Player {
@@ -83,27 +84,14 @@ impl Player {
                 self.pause();
             }
             PlayerMessage::Update => {
-                // if self.song_index == 0 {
-                //     return;
-                // }
-                // eprintln!("index before: {:#?}", self.song_index);
-                let mut prior_duration = Duration::from_secs(0);
-                let pos = self.sink.get_pos();
-
-                // Loop over song durations until we reach the song before the current one, updating the internal song_index as we go
-                for (i, song) in self.playlist.iter().enumerate() {
-                    let temp_duration = prior_duration + song.duration;
-                    if temp_duration > pos {
-                        break;
-                    }
-                    prior_duration = temp_duration;
-                    self.song_index = i;
-                }
-
-                // eprintln!("index: {:#?}", self.song_index);
-                // eprintln!("prior duration: {:#?}", prior_duration);
-                // eprintln!("pos: {:#?}", pos);
-                self.progress = pos - prior_duration;
+                self.sync();
+            }
+            PlayerMessage::ProgressSlider(progress_input) => {
+                eprintln!("Going to {:#?} seconds in source.", progress_input);
+                self.sink
+                    .try_seek(Duration::from_secs_f32(progress_input))
+                    .expect("Could not seek through given source.");
+                self.sync();
             }
         }
     }
@@ -127,9 +115,35 @@ impl Player {
         self.playlist = vec![];
         self.sink.stop();
     }
+    /// Updates the internal player state to sync with the sink
+    pub fn sync(&mut self) {
+        // if self.song_index == 0 {
+        //     return;
+        // }
+        // eprintln!("index before: {:#?}", self.song_index);
+        let mut prior_duration = Duration::from_secs(0);
+        let pos = self.sink.get_pos();
+
+        // Loop over song durations until we reach the song before the current one, updating the internal song_index as we go
+        for (i, song) in self.playlist.iter().enumerate() {
+            let temp_duration = prior_duration + song.duration;
+            // If we get to the song we are currently playing, break from the loop
+            if temp_duration > pos {
+                break;
+            }
+            prior_duration = temp_duration;
+            self.song_index = i;
+        }
+
+        // eprintln!("index: {:#?}", self.song_index);
+        // eprintln!("prior duration: {:#?}", prior_duration);
+        // eprintln!("pos: {:#?}", pos);
+        self.progress = pos - prior_duration;
+    }
     /// Clears the queue and plays the given song
     pub fn play_song(&mut self, song: Song) {
         self.song_index = 0;
+        self.sink.stop();
         self.sink.add_song(&song);
         self.playlist = vec![song];
         self.play();
@@ -181,10 +195,12 @@ impl Player {
             .max_height(400)
             .into();
         let song_title = container(text(song.title.clone())).center_x(Length::Fill);
-        let song_progress: Element<Message> = progress_bar(
+        let song_progress: Element<Message> = slider(
             0.0..=song.duration.as_secs_f32(),
             self.progress.as_secs_f32(),
+            |v| Message::Player(PlayerMessage::ProgressSlider(v)),
         )
+        .step(0.01)
         // .height(10)
         .into();
         let song_progress_widget: Element<Message> = row::with_capacity(3)
@@ -262,9 +278,18 @@ trait SinkSongExt {
 impl SinkSongExt for rodio::Sink {
     fn add_song(&mut self, song: &Song) {
         // Load the song file into memory
-        let song_file = BufReader::new(File::open(song.path.clone()).unwrap());
+        let file_unbuf = File::open(song.path.clone()).unwrap();
+        let song_length = file_unbuf.metadata().unwrap().len();
+        let song_file = BufReader::new(file_unbuf);
         // Decode that sound file into a rodio source
-        let source = Decoder::try_from(song_file).unwrap();
+        let source = Decoder::builder()
+            .with_data(song_file)
+            .with_byte_len(song_length)
+            .with_seekable(true)
+            .with_coarse_seek(true)
+            .with_gapless(true)
+            .build()
+            .unwrap();
         self.append(source);
 
         eprintln!("Adding {:#?} to playlist.", song.title);
