@@ -4,7 +4,7 @@ use crate::page::albums_page::Album;
 use crate::song::Song;
 use cosmic::Element;
 use cosmic::iced::Length;
-// use cosmic::iced_core::Alignment;
+use cosmic::iced_core::Alignment;
 use cosmic::theme;
 use cosmic::widget::*;
 use rodio::Decoder;
@@ -83,20 +83,14 @@ impl Player {
                 self.pause();
             }
             PlayerMessage::Update => {
-                if self.song_index == 0 {
-                    return;
-                }
+                // if self.song_index == 0 {
+                //     return;
+                // }
                 // eprintln!("index before: {:#?}", self.song_index);
                 let mut prior_duration = Duration::from_secs(0);
                 let pos = self.sink.get_pos();
 
                 // Loop over song durations until we reach the song before the current one, updating the internal song_index as we go
-                // while prior_duration < pos {
-                //     self.playlist.iter().enumerate().for_each(|(i, song)| {
-                //         prior_duration += song.duration;
-                //         self.song_index = i;
-                //     })
-                // }
                 for (i, song) in self.playlist.iter().enumerate() {
                     let temp_duration = prior_duration + song.duration;
                     if temp_duration > pos {
@@ -191,8 +185,16 @@ impl Player {
             0.0..=song.duration.as_secs_f32(),
             self.progress.as_secs_f32(),
         )
-        .height(10)
+        // .height(10)
         .into();
+        let song_progress_widget: Element<Message> = row::with_capacity(3)
+            .push(text(self.progress.string_mins_secs()))
+            .push(song_progress)
+            .push(text(song.duration.string_mins_secs()))
+            .align_y(Alignment::Center)
+            .height(20)
+            .spacing(spacing)
+            .into();
         // TODO: Add fallback icons
         let play_pause_button: Element<Message> = if self.playing {
             // let icon = icon::from_name("media-playback-stop"); Doesn't work ig
@@ -226,7 +228,7 @@ impl Player {
             column::with_capacity(4)
                 .push(song_image)
                 .push(song_title)
-                .push(song_progress)
+                .push(song_progress_widget)
                 .push(play_pause)
                 .spacing(spacing),
         );
@@ -265,6 +267,27 @@ impl SinkSongExt for rodio::Sink {
         let source = Decoder::try_from(song_file).unwrap();
         self.append(source);
 
-        eprintln!("Adding {:#?} to playlist.", song);
+        eprintln!("Adding {:#?} to playlist.", song.title);
+    }
+}
+
+trait DurationDisplayExt {
+    /// Returns a string as minutes:seconds
+    fn string_mins_secs(&self) -> String;
+}
+impl DurationDisplayExt for Duration {
+    fn string_mins_secs(&self) -> String {
+        let duration_int = self.as_secs();
+        let min = duration_int / 60;
+        let sec = duration_int % 60;
+        let sec_text: String;
+        // Ensure 1 is displayed as 01
+        if sec <= 9 {
+            sec_text = "0".to_string() + &sec.to_string();
+        } else {
+            sec_text = sec.to_string();
+        }
+
+        min.to_string() + ":" + &sec_text
     }
 }

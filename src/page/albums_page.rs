@@ -150,7 +150,7 @@ impl Album {
         self
     }
     pub async fn from_song(song: Song) -> Option<Album> {
-        println!("Creating album from song: {:#?}", song);
+        eprintln!("Creating album from song: {:#?}", song.title);
         let Some(title) = song.album_title.clone() else {
             return None;
         };
