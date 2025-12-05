@@ -11,6 +11,7 @@ use rodio::Decoder;
 use rodio::stream::OutputStream;
 use std::fs::File;
 use std::io::BufReader;
+use std::mem;
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
@@ -21,6 +22,8 @@ pub enum PlayerMessage {
     Pause,                    // Stop playback, keeping playlist
     Update,                   // Updates the playing song and the progress
     ProgressSlider(f32),      // Updates the sink to play the current song at the appropriate time
+    Skip,                     // Skips one song
+    Previous,                 // Goes to the previous song
 }
 
 pub struct Player {
@@ -74,7 +77,8 @@ impl Player {
             }
             PlayerMessage::PlayAlbum((album, song)) => {
                 self.clear_playlist();
-                self.add_to_playlist(album.get_songs().clone().into_iter().collect());
+                let mut songs = album.get_songs().clone().into_iter().collect();
+                self.add_to_playlist(&mut songs);
                 self.play_index(album.get_song_index(&song).unwrap());
             }
             PlayerMessage::Play => {
@@ -82,6 +86,12 @@ impl Player {
             }
             PlayerMessage::Pause => {
                 self.pause();
+            }
+            PlayerMessage::Skip => {
+                self.play_next();
+            }
+            PlayerMessage::Previous => {
+                self.play_last();
             }
             PlayerMessage::Update => {
                 self.sync();
@@ -100,14 +110,14 @@ impl Player {
         self.playing
     }
     /// Adds the given songs to the queue
-    pub fn add_to_playlist(&mut self, mut songs: Vec<Song>) {
+    pub fn add_to_playlist(&mut self, songs: &mut Vec<Song>) {
         // Add songs to sink playlist
         for song in songs.iter() {
             self.sink.add_song(&song);
             // eprintln!("Adding {:#?} to playlist.", song);
         }
 
-        self.playlist.append(&mut songs);
+        self.playlist.append(songs);
     }
     /// Clears the playlist
     pub fn clear_playlist(&mut self) {
@@ -178,6 +188,17 @@ impl Player {
     /// Begin playing the next song in the playlist
     pub fn play_next(&mut self) {
         self.sink.skip_one();
+        self.song_index += 1;
+        self.sync();
+    }
+    /// Plays the last song in the playlist
+    pub fn play_last(&mut self) {
+        let new_index = self.song_index - 1;
+        let mut playlist = mem::take(&mut self.playlist);
+        self.clear_playlist();
+        self.add_to_playlist(&mut playlist);
+        self.play_index(new_index);
+        self.sync();
     }
     /// Draws the content for the music player
     /// Split into two sections, the top section which shows the current song, and the bottom section which shows the playlist
@@ -237,9 +258,28 @@ impl Player {
                 .class(theme::Button::Suggested)
                 .into()
         };
-        let play_pause = container(play_pause_button)
-            // .center_y(60)
-            .center_x(Length::Fill);
+        let skip_button = button::custom(svg(svg::Handle::from_memory(
+            include_bytes!("../resources/svg/play.svg").as_slice(),
+        )))
+        .height(50)
+        .width(50)
+        .class(theme::Button::Suggested)
+        .on_press(Message::Player(PlayerMessage::Skip));
+        let previous_button = button::custom(svg(svg::Handle::from_memory(
+            include_bytes!("../resources/svg/play.svg").as_slice(),
+        )))
+        .height(50)
+        .width(50)
+        .class(theme::Button::Suggested)
+        .on_press(Message::Player(PlayerMessage::Previous));
+        let play_pause = container(
+            row::with_capacity(3)
+                .push(previous_button)
+                .push(play_pause_button)
+                .push(skip_button)
+                .spacing(spacing),
+        )
+        .center_x(Length::Fill);
         let playing_song = container(
             column::with_capacity(4)
                 .push(song_image)

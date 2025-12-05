@@ -7,9 +7,10 @@ description = "A music player for the COSMIC desktop."
 repository = "https://github.com/Cunningcoder5255/cosmic-pulsar"
 
 [dependencies]
-rodio = {version = "0.21.1", features = ["playback", "tracing", "claxon", "symphonia-all"]}
-libcosmic = { git = "https://github.com/pop-os/libcosmic.git", features = [
-  "a11y", "about", "single-instance", "tokio", "winit", "wgpu", "wayland", "xdg-portal"
+rodio = {version = "0.21.1", default-features = false, features = ["playback", "tracing", "claxon", "symphonia-all"]}
+# libcosmic = { git = "https://github.com/pop-os/libcosmic.git", features = [
+libcosmic = { path = "../libcosmic", features = [
+  "a11y", "about", "single-instance", "tokio", "winit","wgpu", "wayland", "xdg-portal"
 ]}
 lofty = "0.22.4"
 dhat = "0.3.3"
@@ -32,8 +33,6 @@ panic="abort"
 dhat-heap = []
 dhat-ad-hoc = []
 
-[build]
-rustflags = ["-C", "force-frame-pointers=yes"]
 # disable debug symbols for all packages except this one
 # [profile.release.package."*"]
 # debug = false

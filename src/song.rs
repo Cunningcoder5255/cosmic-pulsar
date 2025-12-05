@@ -75,6 +75,7 @@ impl Song {
     }
     pub fn display(&self) -> cosmic::Element<'_, Message> {
         let space = cosmic::theme::spacing().space_s;
+
         let picture = image(self.picture.clone());
         let name = text(self.title.clone())
             .width(Length::Fill)
