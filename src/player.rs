@@ -9,6 +9,7 @@ use cosmic::theme;
 use cosmic::widget::*;
 use rodio::Decoder;
 use rodio::stream::OutputStream;
+use std::f32::consts::PI;
 use std::fs::File;
 use std::io::BufReader;
 use std::mem;
@@ -187,12 +188,17 @@ impl Player {
     }
     /// Begin playing the next song in the playlist
     pub fn play_next(&mut self) {
+        if self.song_index + 1 >= self.playlist.len() {
+            return;
+        }
         self.sink.skip_one();
         self.song_index += 1;
-        self.sync();
     }
     /// Plays the last song in the playlist
     pub fn play_last(&mut self) {
+        if self.song_index == 0 {
+            return;
+        }
         let new_index = self.song_index - 1;
         let mut playlist = mem::take(&mut self.playlist);
         self.clear_playlist();
@@ -233,6 +239,7 @@ impl Player {
             .spacing(spacing)
             .into();
         // TODO: Add fallback icons
+        static PLAY_BUTTON_SIZE: u16 = 50;
         let play_pause_button: Element<Message> = if self.playing {
             // let icon = icon::from_name("media-playback-stop"); Doesn't work ig
             let icon: Element<Message> = svg(svg::Handle::from_memory(
@@ -252,26 +259,35 @@ impl Player {
             ))
             .into();
             button::custom(icon)
-                .height(50)
-                .width(50)
+                .height(PLAY_BUTTON_SIZE)
+                .width(PLAY_BUTTON_SIZE)
                 .on_press(Message::Player(PlayerMessage::Play))
                 .class(theme::Button::Suggested)
                 .into()
         };
-        let skip_button = button::custom(svg(svg::Handle::from_memory(
-            include_bytes!("../resources/svg/play.svg").as_slice(),
-        )))
-        .height(50)
-        .width(50)
-        .class(theme::Button::Suggested)
-        .on_press(Message::Player(PlayerMessage::Skip));
-        let previous_button = button::custom(svg(svg::Handle::from_memory(
-            include_bytes!("../resources/svg/play.svg").as_slice(),
-        )))
-        .height(50)
-        .width(50)
-        .class(theme::Button::Suggested)
-        .on_press(Message::Player(PlayerMessage::Previous));
+        let skip_button = container(
+            button::custom(svg(svg::Handle::from_memory(
+                include_bytes!("../resources/svg/skip.svg").as_slice(),
+            )))
+            .height(PLAY_BUTTON_SIZE - 10)
+            .width(PLAY_BUTTON_SIZE - 10)
+            // .class(theme::Button::Suggested)
+            .on_press(Message::Player(PlayerMessage::Skip)),
+        )
+        .center_y(PLAY_BUTTON_SIZE);
+        let previous_button = container(
+            button::custom(
+                svg(svg::Handle::from_memory(
+                    include_bytes!("../resources/svg/skip.svg").as_slice(),
+                ))
+                .rotation(PI), // Radians, for some reason
+            )
+            .height(PLAY_BUTTON_SIZE - 10)
+            .width(PLAY_BUTTON_SIZE - 10)
+            // .class(theme::Button::Suggested)
+            .on_press(Message::Player(PlayerMessage::Previous)),
+        )
+        .center_y(PLAY_BUTTON_SIZE);
         let play_pause = container(
             row::with_capacity(3)
                 .push(previous_button)
