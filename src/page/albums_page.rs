@@ -1,6 +1,9 @@
 // use crate::app::App;
 use crate::page::card_style;
 use crate::player::PlayerMessage;
+use crate::song_library::SongLibrary;
+use std::collections::HashMap;
+use std::collections::HashSet;
 extern crate rayon;
 use crate::song::Song;
 use cosmic::iced_core::text::Wrapping;
@@ -23,175 +26,21 @@ use walkdir::WalkDir;
 #[derive(Debug, Clone)]
 pub enum AlbumsPageMessage {
     ShowAlbum(String),
-    Populate(Option<Album>),
+    Populate(Option<Song>),
     BackToAllAlbums,
     PopulateAlbumsLibrary,
 }
 
-#[derive(Debug, Clone)]
-pub struct AlbumsLibrary {
-    albums: BTreeSet<Album>,
-    show_album: Option<String>,
-}
-impl AlbumsLibrary {
-    pub fn default() -> Self {
-        AlbumsLibrary {
-            albums: vec![].into_iter().collect(),
-            show_album: None,
-        }
-    }
-    pub fn get_albums(&self) -> &BTreeSet<Album> {
-        &self.albums
-    }
-    /// Inspects the directory given and returns a task to create an album out of each file
-    // Should run async on startup in the future
-    pub fn populate(path: PathBuf) -> Vec<cosmic::Task<Option<Album>>> {
-        let mut lock = std::io::stderr().lock();
-        let _ = writeln!(lock, "{:#?}", path);
-        let mut paths: Vec<PathBuf> = vec![];
-
-        for entry in WalkDir::new(path)
-            .contents_first(true)
-            .follow_links(true)
-            .into_iter()
-            .filter(|e| {
-                if let Ok(e) = e {
-                    let Ok(metadata) = Path::metadata(e.path()) else {
-                        return false;
-                    };
-                    return metadata.is_file();
-                } else {
-                    return false;
-                };
-            })
-        {
-            let _ = writeln!(lock, "Inspecting directory/file: {:#?}", entry);
-            let Ok(entry) = entry else { continue }; // Skip bad paths
-
-            paths.push(entry.into_path());
-        }
-
-        let mut tasks: Vec<cosmic::Task<Option<Album>>> = vec![];
-
-        for path in paths {
-            // Skip invalid songs
-            // let Ok(song) = Song::from_path(path) else {
-            //     continue;
-            // };
-            let _ = writeln!(lock, "Pushing task for: {:#?}", path);
-            tasks.push(
-                cosmic::Task::perform(Song::from_path(path), |song| song)
-                    .and_then(|song| cosmic::Task::perform(Album::from_song(song), |album| album)),
-            );
-            // tasks.push(cosmic::Task::perform(Album::from_song(song), |album| album))
-        }
-
-        tasks
-    }
-    pub async fn add_file(&mut self, file: &Path) {
-        // Create a song from the given file path
-        let Ok(song) = Song::from_path(file.into()).await else {
-            return;
-        };
-        let Some(album_title) = song.album_title.as_ref() else {
-            return;
-        };
-        // Do not use `song` yet because it would force us to clone later and is not relevant for comparisons
-        let mut album = Album::new(album_title, vec![].into_iter().collect());
-        // If the album is already in the set, we add the given song to it.
-        // Album Eq and Hash is not effected by the list of songs, so we can find and compare albums that have more songs than the file we've been given
-        if self.albums.contains(&album) {
-            album = self.albums.take(&album).unwrap();
-            album.add_song(song);
-            self.albums.insert(album);
-        } else {
-            album.add_song(song);
-            self.albums.insert(album);
-        }
-    }
-    pub fn add_album(&mut self, album: Album) {
-        if self.albums.contains(&album) {
-            let mut old_album = self.albums.take(&album).unwrap();
-            old_album = old_album.union(album);
-            self.albums.insert(old_album);
-        } else {
-            self.albums.insert(album);
-        }
-    }
-}
-
-#[derive(Debug, Clone, Derivative)]
-#[derivative(Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Album {
-    pub title: String,
-    #[derivative(
-        Hash = "ignore",
-        PartialEq = "ignore",
-        PartialOrd = "ignore",
-        Ord = "ignore"
-    )]
-    pub placeholder_image: image::Handle,
-    #[derivative(Hash = "ignore", PartialEq = "ignore", Ord = "ignore")]
-    pub songs: BTreeSet<Song>,
-}
-impl Album {
-    pub fn new(title: &str, songs: BTreeSet<Song>) -> Album {
-        let placeholder_image = image::Handle::from_bytes(
-            include_bytes!("../../resources/images/albumplaceholder.png").as_slice(),
-        );
-        Album {
-            title: title.to_string(),
-            placeholder_image,
-            songs,
-        }
-    }
-    pub fn union(mut self, mut other_album: Album) -> Self {
-        self.songs.append(&mut other_album.songs);
-        self
-    }
-    pub async fn from_song(song: Song) -> Option<Album> {
-        eprintln!("Creating album from song: {:#?}", song.title);
-        let Some(title) = song.album_title.clone() else {
-            return None;
-        };
-        Some(Self::new(&title, vec![song].into_iter().collect()))
-    }
-    pub fn add_song(&mut self, song: Song) {
-        self.songs.insert(song);
-    }
-    pub fn get_songs(&self) -> &BTreeSet<Song> {
-        &self.songs
-    }
-    /// Gets the album picture from the first song in the album
-    pub fn get_picture(&self) -> &image::Handle {
-        let picture: &image::Handle;
-        if let Some(song) = &self.songs.first() {
-            picture = &song.picture;
-        } else {
-            picture = &self.placeholder_image;
-        }
-        picture
-    }
-    pub fn get_song_index(&self, given_song: &Song) -> Option<usize> {
-        for (i, song) in self.songs.iter().enumerate() {
-            if song == given_song {
-                return Some(i);
-            }
-        }
-        None
-    }
-}
-
 pub struct AlbumsPage {
-    albums_library: AlbumsLibrary,
+    albums_library: SongLibrary,
 }
 
 impl AlbumsPage {
     pub fn new(
         music_dir: &Path,
     ) -> Result<(AlbumsPage, cosmic::Task<cosmic::Action<Message>>), Box<dyn error::Error>> {
-        let albums = AlbumsLibrary::default();
-        let populate_task = cosmic::Task::batch(AlbumsLibrary::populate(music_dir.into()))
+        let albums = SongLibrary::default();
+        let populate_task = cosmic::Task::batch(SongLibrary::populate(music_dir.into()))
             .map(|o| cosmic::Action::App(Message::AlbumsPage(AlbumsPageMessage::Populate(o))));
 
         Ok((
@@ -218,7 +67,7 @@ impl Page for AlbumsPage {
                 }
                 AlbumsPageMessage::PopulateAlbumsLibrary => {}
                 AlbumsPageMessage::Populate(some_album) => {
-                    some_album.map(|album| self.albums_library.add_album(album));
+                    some_album.map(|album| self.albums_library.add_song(album));
                 }
             }
         }
@@ -235,7 +84,7 @@ impl Page for AlbumsPage {
     }
 }
 
-fn elements_from_songs<'a>(album: &str, library: &'a AlbumsLibrary) -> Element<'a, Message> {
+fn elements_from_songs<'a>(album: &str, library: &'a SongLibrary) -> Element<'a, Message> {
     // println!("Displaying...");
     let space = cosmic::theme::spacing().space_s;
     let mut songs_list: Vec<Element<Message>> = vec![];
