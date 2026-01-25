@@ -1,6 +1,6 @@
 // use crate::HEIGHT;
 use crate::app::Message;
-use crate::page::albums_page::Album;
+// use crate::page::albums_page::Album;
 use crate::song::Song;
 use cosmic::Element;
 use cosmic::iced::Length;
@@ -9,6 +9,7 @@ use cosmic::theme;
 use cosmic::widget::*;
 use rodio::Decoder;
 use rodio::stream::OutputStream;
+use std::borrow::Cow;
 use std::f32::consts::PI;
 use std::fs::File;
 use std::io::BufReader;
@@ -16,15 +17,15 @@ use std::mem;
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
-pub enum PlayerMessage {
-    PlaySong(Song),           // Plays a specific song, clearing the playlist
-    PlayAlbum((Album, Song)), // Plays an album, clearing the playlist
-    Play,                     // Start playback
-    Pause,                    // Stop playback, keeping playlist
-    Update,                   // Updates the playing song and the progress
-    ProgressSlider(f32),      // Updates the sink to play the current song at the appropriate time
-    Skip,                     // Skips one song
-    Previous,                 // Goes to the previous song
+pub enum PlayerMessage<'a> {
+    PlaySong(Song),                // Plays a specific song, clearing the playlist
+    PlaySongs(Vec<Cow<'a, Song>>), // Plays an album, clearing the playlist
+    Play,                          // Start playback
+    Pause,                         // Stop playback, keeping playlist
+    Update,                        // Updates the playing song and the progress
+    ProgressSlider(f32), // Updates the sink to play the current song at the appropriate time
+    Skip,                // Skips one song
+    Previous,            // Goes to the previous song
 }
 
 pub struct Player {
@@ -76,9 +77,8 @@ impl Player {
             PlayerMessage::PlaySong(song) => {
                 self.play_song(song);
             }
-            PlayerMessage::PlayAlbum((album, song)) => {
+            PlayerMessage::PlaySongs(songs) => {
                 self.clear_playlist();
-                let mut songs = album.get_songs().clone().into_iter().collect();
                 self.add_to_playlist(&mut songs);
                 self.play_index(album.get_song_index(&song).unwrap());
             }

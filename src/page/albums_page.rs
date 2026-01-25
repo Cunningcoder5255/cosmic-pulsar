@@ -93,17 +93,11 @@ fn elements_from_songs<'a>(album: &str, library: &'a SongLibrary) -> Element<'a,
             .on_press(Message::AlbumsPage(AlbumsPageMessage::BackToAllAlbums))
             .into(),
     );
-    let Some(album) = library
-        .get_albums()
-        .par_iter()
-        .find_any(|library_album| library_album.title == album)
-    else {
-        return text("Could not find album").into();
-    };
+    let album = library.get_album(album);
 
-    for song in album.get_songs() {
+    for song in album {
         let button = button::custom(song.display()).on_press(Message::Player(
-            PlayerMessage::PlayAlbum((album.clone(), song.clone())),
+            PlayerMessage::PlayAlbum((album.clone(), song)),
         ));
         songs_list.push(button.into());
     }

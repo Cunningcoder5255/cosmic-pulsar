@@ -1,5 +1,6 @@
 use crate::app::Message;
 use crate::song::Song;
+use std::borrow::Cow;
 extern crate walkdir;
 use cosmic::{Action, Task};
 use std::collections::{HashMap, HashSet};
@@ -57,5 +58,32 @@ impl SongLibrary {
             songs: vec![].into_iter().collect(),
             show_album: None,
         }
+    }
+    pub fn get_album(&self, album: &str) -> Vec<Cow<Song>> {
+        let mut songs: Vec<Cow<Song>> = vec![];
+        for song in self.songs.iter() {
+            if song.album_title == Some(album.to_string()) {
+                songs.push(Cow::Borrowed(song));
+            }
+        }
+
+        songs
+    }
+    pub fn get_albums(&self) -> HashMap<String, Vec<Cow<Song>>> {
+        let mut songs: HashMap<String, Vec<Cow<Song>>> = HashMap::new();
+        for song in self.songs.iter() {
+            let Some(album_title) = song.album_title.clone() else {
+                continue;
+            };
+            match songs.get_mut(&album_title) {
+                Some(entry) => {
+                    entry.push(Cow::Borrowed(song));
+                }
+                None => {
+                    songs.insert(album_title, vec![Cow::Borrowed(song)]);
+                }
+            }
+        }
+        songs
     }
 }
