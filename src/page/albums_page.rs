@@ -67,6 +67,10 @@ impl Page for AlbumsPage {
                 }
                 AlbumsPageMessage::PopulateAlbumsLibrary => {}
                 AlbumsPageMessage::Populate(some_song) => {
+                    // eprintln!("Adding {:#?} to library", some_song);
+                    // if some_song.is_some() {
+                    //     self.albums_library.add_song(some_song.unwrap());
+                    // }
                     some_song.map(|song| self.albums_library.add_song(song));
                 }
             }
@@ -75,9 +79,10 @@ impl Page for AlbumsPage {
     }
     fn view(&self) -> cosmic::Element<'_, Message> {
         if self.albums_library.show_album.is_none() {
+            // eprintln!("Elements from albums");
             return elements_from_albums(&self.albums_library);
-            eprintln!("Showing albums.");
         }
+        // eprintln!("Elements from songs");
         elements_from_songs(
             self.albums_library.show_album.as_ref().unwrap(),
             &self.albums_library,
@@ -110,12 +115,14 @@ fn elements_from_songs<'a>(album_title: &str, library: &'a SongLibrary) -> Eleme
     .into()
 }
 
-fn elements_from_albums(albums: &SongLibrary) -> Element<'static, Message> {
+fn elements_from_albums(library: &SongLibrary) -> Element<'static, Message> {
+    // eprintln!("{:#?}", library);
     let space = cosmic::theme::spacing().space_s;
     let space_s = cosmic::theme::spacing().space_xxs;
     let space_xs = cosmic::theme::spacing().space_xxxs;
     let mut albums_grid: Vec<Element<Message>> = vec![];
-    for album in albums.get_albums() {
+    // eprintln!("{:#?}", library);
+    for album in library.get_albums() {
         static CARD_WIDTH: f32 = 100.0;
         let picture: Element<Message> = image(album.1[0].picture.clone())
             .border_radius([4.0; 4]) // Currently doesn't work with hardware rendering
