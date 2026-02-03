@@ -59,28 +59,30 @@ impl SongLibrary {
             show_album: None,
         }
     }
-    pub fn get_album(&self, album: &str) -> Vec<Cow<Song>> {
-        let mut songs: Vec<Cow<Song>> = vec![];
+    pub fn get_album(&self, album: &str) -> Vec<Song> {
+        eprintln!("getting albums");
+        let mut songs: Vec<Song> = vec![];
         for song in self.songs.iter() {
             if song.album_title == Some(album.to_string()) {
-                songs.push(Cow::Borrowed(song));
+                songs.push(song.clone());
             }
         }
 
+        eprintln!("{:#?}", songs);
         songs
     }
-    pub fn get_albums(&self) -> HashMap<String, Vec<Cow<Song>>> {
-        let mut songs: HashMap<String, Vec<Cow<Song>>> = HashMap::new();
+    pub fn get_albums(&self) -> HashMap<String, Vec<Song>> {
+        let mut songs: HashMap<String, Vec<Song>> = HashMap::new();
         for song in self.songs.iter() {
             let Some(album_title) = song.album_title.clone() else {
                 continue;
             };
             match songs.get_mut(&album_title) {
                 Some(entry) => {
-                    entry.push(Cow::Borrowed(song));
+                    entry.push(song.clone());
                 }
                 None => {
-                    songs.insert(album_title, vec![Cow::Borrowed(song)]);
+                    songs.insert(album_title, vec![song.clone()]);
                 }
             }
         }

@@ -73,7 +73,7 @@ impl Song {
             duration,
         }
     }
-    pub fn display(&self) -> cosmic::Element<'_, Message> {
+    pub fn display(&self) -> cosmic::Element<'static, Message> {
         let space = cosmic::theme::spacing().space_s;
 
         let picture = image(self.picture.clone());

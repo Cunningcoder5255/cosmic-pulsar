@@ -66,8 +66,8 @@ impl Page for AlbumsPage {
                     self.albums_library.show_album = None;
                 }
                 AlbumsPageMessage::PopulateAlbumsLibrary => {}
-                AlbumsPageMessage::Populate(some_album) => {
-                    some_album.map(|album| self.albums_library.add_song(album));
+                AlbumsPageMessage::Populate(some_song) => {
+                    some_song.map(|song| self.albums_library.add_song(song));
                 }
             }
         }
@@ -76,6 +76,7 @@ impl Page for AlbumsPage {
     fn view(&self) -> cosmic::Element<'_, Message> {
         if self.albums_library.show_album.is_none() {
             return elements_from_albums(&self.albums_library);
+            eprintln!("Showing albums.");
         }
         elements_from_songs(
             self.albums_library.show_album.as_ref().unwrap(),
@@ -84,7 +85,7 @@ impl Page for AlbumsPage {
     }
 }
 
-fn elements_from_songs<'a>(album: &str, library: &'a SongLibrary) -> Element<'a, Message> {
+fn elements_from_songs<'a>(album_title: &str, library: &'a SongLibrary) -> Element<'a, Message> {
     // println!("Displaying...");
     let space = cosmic::theme::spacing().space_s;
     let mut songs_list: Vec<Element<Message>> = vec![];
@@ -93,14 +94,13 @@ fn elements_from_songs<'a>(album: &str, library: &'a SongLibrary) -> Element<'a,
             .on_press(Message::AlbumsPage(AlbumsPageMessage::BackToAllAlbums))
             .into(),
     );
-    let album = library.get_album(album);
+    let album: Vec<Song> = library.get_album(album_title);
 
-    for song in album {
-        let button = button::custom(song.display()).on_press(Message::Player(
-            PlayerMessage::PlayAlbum((album.clone(), song)),
-        ));
+    album.clone().iter().enumerate().for_each(|(i, song)| {
+        let button = button::custom(song.display())
+            .on_press(Message::Player(PlayerMessage::PlaySongs(album.clone(), i)));
         songs_list.push(button.into());
-    }
+    });
     // println!("Done");
     scrollable(
         column::with_children(songs_list)
@@ -110,17 +110,17 @@ fn elements_from_songs<'a>(album: &str, library: &'a SongLibrary) -> Element<'a,
     .into()
 }
 
-fn elements_from_albums(albums: &AlbumsLibrary) -> Element<'static, Message> {
+fn elements_from_albums(albums: &SongLibrary) -> Element<'static, Message> {
     let space = cosmic::theme::spacing().space_s;
     let space_s = cosmic::theme::spacing().space_xxs;
     let space_xs = cosmic::theme::spacing().space_xxxs;
     let mut albums_grid: Vec<Element<Message>> = vec![];
     for album in albums.get_albums() {
         static CARD_WIDTH: f32 = 100.0;
-        let picture: Element<Message> = image(album.get_picture().clone())
-            .border_radius([4.0; 4]) // Currently doesn't work
+        let picture: Element<Message> = image(album.1[0].picture.clone())
+            .border_radius([4.0; 4]) // Currently doesn't work with hardware rendering
             .into();
-        let label = text(album.title.clone())
+        let label = text(album.0.clone())
             .center()
             .wrapping(Wrapping::WordOrGlyph);
         let album_card: Element<Message> = container(
@@ -131,7 +131,7 @@ fn elements_from_albums(albums: &AlbumsLibrary) -> Element<'static, Message> {
                     .spacing(space_xs),
             )
             .on_press(Message::AlbumsPage(AlbumsPageMessage::ShowAlbum(
-                album.title.clone(),
+                album.0.clone(),
             )))
             .height(CARD_WIDTH * 1.5)
             .padding(space_s),

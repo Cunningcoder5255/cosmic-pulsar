@@ -9,7 +9,7 @@ use cosmic::theme;
 use cosmic::widget::*;
 use rodio::Decoder;
 use rodio::stream::OutputStream;
-use std::borrow::Cow;
+// use std::borrow::Cow;
 use std::f32::consts::PI;
 use std::fs::File;
 use std::io::BufReader;
@@ -17,12 +17,12 @@ use std::mem;
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
-pub enum PlayerMessage<'a> {
-    PlaySong(Song),                // Plays a specific song, clearing the playlist
-    PlaySongs(Vec<Cow<'a, Song>>), // Plays an album, clearing the playlist
-    Play,                          // Start playback
-    Pause,                         // Stop playback, keeping playlist
-    Update,                        // Updates the playing song and the progress
+pub enum PlayerMessage {
+    PlaySong(Song),              // Plays a specific song, clearing the playlist
+    PlaySongs(Vec<Song>, usize), // Plays an album, clearing the playlist
+    Play,                        // Start playback
+    Pause,                       // Stop playback, keeping playlist
+    Update,                      // Updates the playing song and the progress
     ProgressSlider(f32), // Updates the sink to play the current song at the appropriate time
     Skip,                // Skips one song
     Previous,            // Goes to the previous song
@@ -77,10 +77,10 @@ impl Player {
             PlayerMessage::PlaySong(song) => {
                 self.play_song(song);
             }
-            PlayerMessage::PlaySongs(songs) => {
+            PlayerMessage::PlaySongs(mut songs, index) => {
                 self.clear_playlist();
                 self.add_to_playlist(&mut songs);
-                self.play_index(album.get_song_index(&song).unwrap());
+                self.play_index(index);
             }
             PlayerMessage::Play => {
                 self.play();
