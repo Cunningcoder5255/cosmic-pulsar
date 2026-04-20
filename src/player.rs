@@ -8,7 +8,7 @@ use cosmic::iced_core::Alignment;
 use cosmic::theme;
 use cosmic::widget::*;
 use rodio::Decoder;
-use rodio::stream::OutputStream;
+use rodio::stream::DeviceSinkBuilder;
 // use std::borrow::Cow;
 use std::f32::consts::PI;
 use std::fs::File;
@@ -34,8 +34,9 @@ pub struct Player {
     playing: bool,
     shuffle: bool,
     progress: Duration,
-    _stream_handle: OutputStream, // Keep stream handle alive to continue playback
-    sink: rodio::Sink,            // Keep audio sink alive to continue playback
+    // _stream_handle: MixerDeviceSink, // Keep stream handle alive to continue playback
+    sink: rodio::MixerDeviceSink, // Keep audio sink alive to continue playback
+    player: rodio::Player,
 }
 
 impl Player {
@@ -45,8 +46,9 @@ impl Player {
         playing: bool,
         shuffle: bool,
         progress: Duration,
-        _stream_handle: OutputStream,
-        sink: rodio::Sink,
+        // _stream_handle: OutputStream,
+        sink: rodio::MixerDeviceSink,
+        player: rodio::Player,
     ) -> Player {
         Self {
             song_index: song_index.into(),
@@ -54,21 +56,25 @@ impl Player {
             playing,
             shuffle,
             progress,
-            _stream_handle,
+            // _stream_handle,
             sink,
+            player,
         }
     }
     pub fn default() -> Player {
-        let stream_handle = rodio::OutputStreamBuilder::open_default_stream()
-            .expect("Could not create audio sink: ");
+        let sink =
+            rodio::DeviceSinkBuilder::open_default_sink().expect("Could not create audio sink: ");
+        let player = rodio::Player::connect_new(&sink.mixer());
         Self {
             song_index: 0,
             playlist: vec![],
             playing: false,
             shuffle: false,
             progress: Duration::from_secs(0),
-            sink: rodio::Sink::connect_new(&stream_handle.mixer()),
-            _stream_handle: stream_handle,
+            // sink: rodio::Sink::connect_new(&stream_handle.mixer()),
+            // _stream_handle: stream_handle,
+            sink,
+            player,
         }
     }
     /// Handles cosmic messages
@@ -99,7 +105,7 @@ impl Player {
             }
             PlayerMessage::ProgressSlider(progress_input) => {
                 eprintln!("Going to {:#?} seconds in source.", progress_input);
-                self.sink
+                self.player
                     .try_seek(Duration::from_secs_f32(progress_input))
                     .expect("Could not seek through given source.");
                 self.sync();
@@ -114,7 +120,7 @@ impl Player {
     pub fn add_to_playlist(&mut self, songs: &mut Vec<Song>) {
         // Add songs to sink playlist
         for song in songs.iter() {
-            self.sink.add_song(&song);
+            self.player.add_song(&song);
             // eprintln!("Adding {:#?} to playlist.", song);
         }
 
@@ -124,7 +130,7 @@ impl Player {
     pub fn clear_playlist(&mut self) {
         self.song_index = 0;
         self.playlist = vec![];
-        self.sink.stop();
+        self.player.stop();
     }
     /// Updates the internal player state to sync with the sink
     pub fn sync(&mut self) {
@@ -133,7 +139,7 @@ impl Player {
         // }
         // eprintln!("index before: {:#?}", self.song_index);
         let mut prior_duration = Duration::from_secs(0);
-        let pos = self.sink.get_pos();
+        let pos = self.player.get_pos();
 
         // Loop over song durations until we reach the song before the current one, updating the internal song_index as we go
         for (i, song) in self.playlist.iter().enumerate() {
@@ -154,17 +160,17 @@ impl Player {
     /// Clears the queue and plays the given song
     pub fn play_song(&mut self, song: Song) {
         self.song_index = 0;
-        self.sink.stop();
-        self.sink.add_song(&song);
+        self.player.stop();
+        self.player.add_song(&song);
         self.playlist = vec![song];
         self.play();
     }
     pub fn play(&mut self) {
-        self.sink.play();
+        self.player.play();
         self.playing = true;
     }
     pub fn pause(&mut self) {
-        self.sink.pause();
+        self.player.pause();
         self.playing = false;
     }
     /// Begin playing the song at the given index in the playlist
@@ -175,7 +181,7 @@ impl Player {
         if index > 0 {
             for _ in 0..(index - self.song_index) {
                 // eprintln!("Skipping one song.");
-                self.sink.skip_one();
+                self.player.skip_one();
             }
             // self.sink.skip_one();
         }
@@ -191,7 +197,7 @@ impl Player {
         if self.song_index + 1 >= self.playlist.len() {
             return;
         }
-        self.sink.skip_one();
+        self.player.skip_one();
         self.song_index += 1;
     }
     /// Plays the last song in the playlist
@@ -331,7 +337,7 @@ trait SinkSongExt {
     fn add_song(&mut self, song: &Song);
 }
 
-impl SinkSongExt for rodio::Sink {
+impl SinkSongExt for rodio::Player {
     fn add_song(&mut self, song: &Song) {
         // Load the song file into memory
         let file_unbuf = File::open(song.path.clone()).unwrap();

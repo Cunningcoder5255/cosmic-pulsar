@@ -5,15 +5,17 @@ use cosmic::iced::futures::SinkExt;
 use cosmic::iced::time::Duration;
 use cosmic::iced_futures;
 use player::PlayerMessage;
+use slotmap::Key;
+use std::error::Error;
+use std::path::PathBuf;
 extern crate tokio;
-// use crate::song::Album;
-// use crate::song::Song;
 use albums_page::AlbumsPage;
-use cosmic;
+use artists_page::ArtistsPage;
 use cosmic::iced::Subscription;
 use cosmic::widget::nav_bar;
 use cosmic::widget::pane_grid;
 use cosmic::widget::pane_grid::Axis;
+use cosmic::{self, Task};
 use std::env;
 use std::path;
 extern crate rodio;
@@ -31,12 +33,18 @@ enum Pane {
     Player,
 }
 
+enum IdentifyPage {
+    AlbumsPage,
+    ArtistsPage,
+}
+
 pub struct App {
     page: Box<dyn Page>,
     core: cosmic::Core,
     nav_bar: nav_bar::Model,
     pane_state: pane_grid::State<Pane>,
     pub player: Player,
+    music_dir: PathBuf,
 }
 
 impl cosmic::Application for App {
@@ -54,10 +62,11 @@ impl cosmic::Application for App {
             .insert()
             .text("Albums")
             // .data::<Box<dyn Page>>(Box::new(AlbumsPage::default()))
-            // idk what im doing this prob needs to be refactored when i do ^
+            //             // idk what im doing this prob needs to be refactored when i do ^
             // .icon(icon::from_name("applications-science-symbolic"))
+            .data::<u16>(0)
             .activate();
-        nav_bar.insert().text("Artists");
+        nav_bar.insert().text("Artists").data::<u16>(0);
 
         let music_dir: path::PathBuf;
         if let Some(mut home_dir) = env::home_dir() {
@@ -74,11 +83,12 @@ impl cosmic::Application for App {
 
         // let player = Player::default();
         let app = Self {
-            page: Box::new(albums_page),
+            page: albums_page,
             nav_bar,
             core,
             pane_state,
             player: Player::default(),
+            music_dir,
         };
         (app, task)
     }
@@ -137,6 +147,35 @@ impl cosmic::Application for App {
     fn on_nav_select(&mut self, id: nav_bar::Id) -> cosmic::Task<cosmic::Action<Message>> {
         // Activate the page in the model.
         self.nav_bar.activate(id);
-        cosmic::Task::none()
+        let task;
+        (self.page, task) = self
+            .page_from_id(id.data().as_ffi())
+            .expect("Could not create page.");
+        // let task = cosmic::Task::none();
+        // let page;
+        // match id {
+        //     id if id == "Albums".into() => {
+        //         let (page, task) =
+        //             AlbumsPage::new(&self.music_dir).expect("Could not find albums: ");
+        //     }
+        //     "Artists" => {
+        //         page = Box::new(ArtistsPage::default());
+        //     }
+        // }
+        task
+    }
+}
+
+impl App {
+    fn page_from_id(
+        &self,
+        page_id: u64,
+    ) -> Result<(Box<dyn Page>, Task<cosmic::Action<Message>>), Box<dyn Error>> {
+        let page = match page_id {
+            0 => AlbumsPage::new(&self.music_dir),
+            1 => ArtistsPage::new(&self.music_dir),
+            _ => panic!("Value not in range"),
+        };
+        page
     }
 }

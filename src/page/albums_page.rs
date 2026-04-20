@@ -38,15 +38,15 @@ pub struct AlbumsPage {
 impl AlbumsPage {
     pub fn new(
         music_dir: &Path,
-    ) -> Result<(AlbumsPage, cosmic::Task<cosmic::Action<Message>>), Box<dyn error::Error>> {
+    ) -> Result<(Box<dyn Page>, cosmic::Task<cosmic::Action<Message>>), Box<dyn error::Error>> {
         let albums = SongLibrary::default();
         let populate_task = cosmic::Task::batch(SongLibrary::populate(music_dir.into()))
             .map(|o| cosmic::Action::App(Message::AlbumsPage(AlbumsPageMessage::Populate(o))));
 
         Ok((
-            AlbumsPage {
+            Box::new(AlbumsPage {
                 albums_library: albums,
-            },
+            }),
             populate_task,
         ))
     }
