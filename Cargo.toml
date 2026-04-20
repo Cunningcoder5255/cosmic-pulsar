@@ -8,7 +8,7 @@ repository = "https://github.com/Cunningcoder5255/cosmic-pulsar"
 
 [dependencies]
 rodio = {version = "0.22.2", default-features = false, features = ["playback", "tracing", "claxon", "symphonia-all"]}
-libcosmic = { git = "https://github.com/pop-os/libcosmic.git", rev = "6439507aa2d8d7e6a89c0fc016895dc0ab9252d4", features = [
+libcosmic = { git = "https://github.com/pop-os/libcosmic.git", rev = "6dba6a2561c84e5a1bf527c56856e7d78fb3c094", features = [
 # libcosmic = { path = "../libcosmic", features = [
   "a11y", "about", "single-instance", "tokio", "winit","wgpu", "wayland", "xdg-portal"
 ]}
@@ -19,6 +19,7 @@ walkdir = "2.5.0"
 derivative = "2.2.0"
 tokio = "1.48.0"
 slotmap = "1.1.1"
+fluent = "0.17.0"
 
 [profile.dev]
 # Basically necessary for the program to have any level of performance

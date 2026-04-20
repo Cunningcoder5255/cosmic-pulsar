@@ -1,9 +1,10 @@
 use crate::page::*;
 use crate::player;
 use crate::player::Player;
-use cosmic::iced::futures::SinkExt;
+use cosmic::iced::time;
 use cosmic::iced::time::Duration;
-use cosmic::iced_futures;
+use slotmap::KeyData;
+// use cosmic::iced_futures;
 use player::PlayerMessage;
 use slotmap::Key;
 use std::error::Error;
@@ -66,7 +67,7 @@ impl cosmic::Application for App {
             // .icon(icon::from_name("applications-science-symbolic"))
             .data::<u16>(0)
             .activate();
-        nav_bar.insert().text("Artists").data::<u16>(0);
+        nav_bar.insert().text("Artists").data::<u16>(1);
 
         let music_dir: path::PathBuf;
         if let Some(mut home_dir) = env::home_dir() {
@@ -127,16 +128,17 @@ impl cosmic::Application for App {
     }
     /// Subscription, primarily for updating the song progress bar as time passes
     fn subscription(&self) -> Subscription<Message> {
-        return Subscription::run(|| {
-            iced_futures::stream::channel(1, |mut emitter| async move {
-                let mut interval = tokio::time::interval(Duration::from_millis(100));
+        // return Subscription::run(|| {
+        //     stream::channel(1, |mut emitter| async move {
+        //         let mut interval = tokio::time::interval(Duration::from_millis(100));
 
-                loop {
-                    interval.tick().await;
-                    _ = emitter.send(Message::Player(PlayerMessage::Update)).await;
-                }
-            })
-        });
+        //         loop {
+        //             interval.tick().await;
+        //             _ = emitter.send(Message::Player(PlayerMessage::Update)).await;
+        //         }
+        //     })
+        // });
+        time::repeat(get_update, Duration::from_secs(1))
     }
     /// Enable the nav bar to appear in your application when `Some`.
     fn nav_model(&self) -> Option<&nav_bar::Model> {
@@ -149,7 +151,7 @@ impl cosmic::Application for App {
         self.nav_bar.activate(id);
         let task;
         (self.page, task) = self
-            .page_from_id(id.data().as_ffi())
+            .page_from_id(id.data())
             .expect("Could not create page.");
         // let task = cosmic::Task::none();
         // let page;
@@ -169,13 +171,20 @@ impl cosmic::Application for App {
 impl App {
     fn page_from_id(
         &self,
-        page_id: u64,
+        page_id: KeyData,
     ) -> Result<(Box<dyn Page>, Task<cosmic::Action<Message>>), Box<dyn Error>> {
-        let page = match page_id {
+        let Some(number) = self.nav_bar.data::<u16>(page_id.into()) else {
+            panic!()
+        };
+        println!("{:#?}", page_id);
+        let page = match number {
             0 => AlbumsPage::new(&self.music_dir),
             1 => ArtistsPage::new(&self.music_dir),
             _ => panic!("Value not in range"),
         };
         page
     }
+}
+async fn get_update() -> Message {
+    Message::Player(PlayerMessage::Update)
 }

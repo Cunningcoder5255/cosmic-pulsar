@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 extern crate rayon;
 use crate::song::Song;
-use cosmic::iced_core::text::Wrapping;
+use cosmic::iced::advanced::text::Wrapping;
 use std::io::Write;
 extern crate walkdir;
 use crate::app::Message;

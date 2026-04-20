@@ -1,15 +1,10 @@
-// use crate::HEIGHT;
 use crate::app::Message;
-// use crate::page::albums_page::Album;
 use crate::song::Song;
 use cosmic::Element;
-use cosmic::iced::Length;
-use cosmic::iced_core::Alignment;
+use cosmic::iced::{Alignment, Length};
 use cosmic::theme;
 use cosmic::widget::*;
 use rodio::Decoder;
-use rodio::stream::DeviceSinkBuilder;
-// use std::borrow::Cow;
 use std::f32::consts::PI;
 use std::fs::File;
 use std::io::BufReader;
@@ -34,8 +29,7 @@ pub struct Player {
     playing: bool,
     shuffle: bool,
     progress: Duration,
-    // _stream_handle: MixerDeviceSink, // Keep stream handle alive to continue playback
-    sink: rodio::MixerDeviceSink, // Keep audio sink alive to continue playback
+    _sink: rodio::MixerDeviceSink, // Keep audio sink alive to continue playback
     player: rodio::Player,
 }
 
@@ -47,7 +41,7 @@ impl Player {
         shuffle: bool,
         progress: Duration,
         // _stream_handle: OutputStream,
-        sink: rodio::MixerDeviceSink,
+        _sink: rodio::MixerDeviceSink,
         player: rodio::Player,
     ) -> Player {
         Self {
@@ -57,14 +51,14 @@ impl Player {
             shuffle,
             progress,
             // _stream_handle,
-            sink,
+            _sink,
             player,
         }
     }
     pub fn default() -> Player {
-        let sink =
+        let _sink =
             rodio::DeviceSinkBuilder::open_default_sink().expect("Could not create audio sink: ");
-        let player = rodio::Player::connect_new(&sink.mixer());
+        let player = rodio::Player::connect_new(&_sink.mixer());
         Self {
             song_index: 0,
             playlist: vec![],
@@ -73,7 +67,7 @@ impl Player {
             progress: Duration::from_secs(0),
             // sink: rodio::Sink::connect_new(&stream_handle.mixer()),
             // _stream_handle: stream_handle,
-            sink,
+            _sink,
             player,
         }
     }

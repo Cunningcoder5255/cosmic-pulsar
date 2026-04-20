@@ -88,15 +88,9 @@ impl Song {
         )
         .align_y(Alignment::Center)
         .height(Length::Fill);
-        let container = container(
-            row::with_capacity::<Message>(3)
-                .push(picture)
-                .push(name)
-                .push(index)
-                .spacing(space),
-        )
-        .style(card_style)
-        .height(HEIGHT);
+        let container = container(row![picture, name, index].spacing(space))
+            .style(card_style)
+            .height(HEIGHT);
 
         container.into()
     }
